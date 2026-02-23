@@ -4,13 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace arc_autoplay::cfg {
+namespace arc_autoplay::cfg::autoplay {
 
-inline constexpr const char *kLogTag = "ArcAutoplay";
-inline constexpr const char *kRuntimeClass = "java/lang/Runtime";
-inline constexpr const char *kLibName = "libcocos2dcpp.so";
+// Address constants used by autoplay hooks and binary patches.
+// Values are image-base-relative offsets into `libcocos2dcpp.so`.
 
-// 6.12.11c (ARM64) image-base-relative offsets.
+// Hook targets.
 inline constexpr uintptr_t kLibcocos2dcpp_Gameplay_processLogicNotes = 0x147671C;
 inline constexpr uintptr_t kLibcocos2dcpp_Gameplay_tryTapJudgementForTouch = 0x134BDA8;
 inline constexpr uintptr_t kLibcocos2dcpp_ScoreState_applyJudgement = 0x0ACEEF4;
@@ -21,17 +20,21 @@ inline constexpr uintptr_t kLibcocos2dcpp_NoteEffect_onMiss = 0x1547754;
 inline constexpr uintptr_t kLibcocos2dcpp_NoteEffect_onJudgement = 0x15D3180;
 inline constexpr uintptr_t kLibcocos2dcpp_LogicColor_acceptsTouch = 0x116BA0C;
 
+// Small inline instruction patches.
 inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_a = 0x1476C04;
 inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_b = 0x1476CBC;
 inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_addC8 = 0x1476D0C;
 
+// RTTI/typeinfo anchors.
 inline constexpr uintptr_t kTypeinfo_LogicHoldNote = 0x18AAB60;
 inline constexpr uintptr_t kTypeinfo_LogicArcNote = 0x18265D0;
 
+// Gameplay object layout.
 inline constexpr size_t kGameplay_timer_off = 48;
 inline constexpr size_t kGameplay_note_begin_off = 160;
 inline constexpr size_t kGameplay_note_end_off = 168;
 
+// LogicNote / derived layout.
 inline constexpr size_t kNote_active_u8_off = 84;
 inline constexpr size_t kNote_timeStart_i32_off = 24;
 inline constexpr size_t kNote_timeEnd_i32_off = 28;
@@ -55,27 +58,32 @@ inline constexpr size_t kArc_playScene_vcall_off = 0x530;
 
 inline constexpr size_t kHold_headActivated_u8_off = 160;
 
+// Timer layout.
 inline constexpr size_t kTimer_flag_u8_off = 45;
 inline constexpr size_t kTimer_msA_i32_off = 32;
 inline constexpr size_t kTimer_msB_i32_off = 40;
 inline constexpr size_t kTimer_msC_i32_off = 52;
 
+// Touch-like layout used by synthetic stubs.
 inline constexpr size_t kTouch_sys_id_i32_off = 0x0C;
 inline constexpr size_t kTouch_ndc_x_f32_off = 0x1C;
 inline constexpr size_t kTouch_ndc_y_f32_off = 0x20;
 inline constexpr size_t kTouch_uid_i32_off = 0x34;
 inline constexpr size_t kTouch_timestamp_i32_off = 0x3C;
 
+// Runtime behavior knobs.
 inline constexpr int kSynthTouchBaseId = 100;
 inline constexpr int kMaxSynthTouches = 16;
 inline constexpr int kSynthTouchHoldId = kSynthTouchBaseId + kMaxSynthTouches;
 inline constexpr int kLongStartLeadMs = 0;
 inline constexpr int kLongEndLagMs = 0;
 
+// Track coordinate constants.
 inline constexpr float kTrackHalfWidth = 425.0f;
 inline constexpr float kTrackHeightHalf = 275.0f;
 inline constexpr float kGroundYWorld = 100.0f;
 
+// First 16 bytes at each hook target.
 inline constexpr std::array<uint8_t, 16> kSig_Gameplay_processLogicNotes = {
     0xE8, 0x0F, 0x19, 0xFC,
     0xFD, 0x7B, 0x01, 0xA9,
@@ -132,4 +140,4 @@ inline constexpr std::array<uint8_t, 16> kSig_LogicColor_acceptsTouch = {
     0xFD, 0x43, 0x00, 0x91,
 };
 
-} // namespace arc_autoplay::cfg
+} // namespace arc_autoplay::cfg::autoplay

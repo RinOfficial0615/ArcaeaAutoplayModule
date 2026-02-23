@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "AutoplayConfig.h"
-#include "MemoryUtils.h"
+#include "config/AutoplayConfig.h"
+#include "utils/MemoryUtils.hpp"
 
 namespace arc_autoplay::game {
 
@@ -39,12 +39,12 @@ public:
 
     int NowMs() const {
         if (!*this) return 0;
-        if (Read<uint8_t>(cfg::kTimer_flag_u8_off)) {
-            return Read<int32_t>(cfg::kTimer_msA_i32_off) - Read<int32_t>(cfg::kTimer_msB_i32_off);
+        if (Read<uint8_t>(cfg::autoplay::kTimer_flag_u8_off)) {
+            return Read<int32_t>(cfg::autoplay::kTimer_msA_i32_off) - Read<int32_t>(cfg::autoplay::kTimer_msB_i32_off);
         }
 
-        const int v5 = Read<int32_t>(cfg::kTimer_msC_i32_off);
-        const int v6 = Read<int32_t>(cfg::kTimer_msB_i32_off);
+        const int v5 = Read<int32_t>(cfg::autoplay::kTimer_msC_i32_off);
+        const int v6 = Read<int32_t>(cfg::autoplay::kTimer_msB_i32_off);
         const int v7 = (v5 <= 0) ? -3000 : 0;
         return v5 - v6 + v7;
     }
@@ -54,13 +54,13 @@ class Gameplay final : public Object {
 public:
     using Object::Object;
 
-    Timer timer() const { return Timer(ReadPtr(cfg::kGameplay_timer_off)); }
+    Timer timer() const { return Timer(ReadPtr(cfg::autoplay::kGameplay_timer_off)); }
 
     uintptr_t *pendingNoteBegin() const {
-        return reinterpret_cast<uintptr_t *>(ReadPtr(cfg::kGameplay_note_begin_off));
+        return reinterpret_cast<uintptr_t *>(ReadPtr(cfg::autoplay::kGameplay_note_begin_off));
     }
     uintptr_t *pendingNoteEnd() const {
-        return reinterpret_cast<uintptr_t *>(ReadPtr(cfg::kGameplay_note_end_off));
+        return reinterpret_cast<uintptr_t *>(ReadPtr(cfg::autoplay::kGameplay_note_end_off));
     }
 };
 
@@ -69,7 +69,7 @@ public:
     using Object::Object;
 
     float x_norm() const {
-        return Read<float>(cfg::kNote_pos_xnorm_f32_off);
+        return Read<float>(cfg::autoplay::kNote_pos_xnorm_f32_off);
     }
 };
 
@@ -77,11 +77,11 @@ class LogicNote : public Object {
 public:
     using Object::Object;
 
-    bool active() const { return *this && Read<uint8_t>(cfg::kNote_active_u8_off) != 0; }
-    int timeStart() const { return Read<int32_t>(cfg::kNote_timeStart_i32_off); }
-    int timeEnd() const { return Read<int32_t>(cfg::kNote_timeEnd_i32_off); }
+    bool active() const { return *this && Read<uint8_t>(cfg::autoplay::kNote_active_u8_off) != 0; }
+    int timeStart() const { return Read<int32_t>(cfg::autoplay::kNote_timeStart_i32_off); }
+    int timeEnd() const { return Read<int32_t>(cfg::autoplay::kNote_timeEnd_i32_off); }
 
-    NotePosition pos() const { return NotePosition(ReadPtr(cfg::kNote_pos_ptr_off)); }
+    NotePosition pos() const { return NotePosition(ReadPtr(cfg::autoplay::kNote_pos_ptr_off)); }
 
     uintptr_t vtable() const { return mem::Read<uintptr_t>(addr()); }
 
@@ -98,34 +98,34 @@ public:
         return mem::Read<uintptr_t>(vptr - 8);
     }
 
-    uintptr_t playSceneOrCtx() const { return ReadPtr(cfg::kNote_play_scene_ptr_off); }
+    uintptr_t playSceneOrCtx() const { return ReadPtr(cfg::autoplay::kNote_play_scene_ptr_off); }
 
-    void clearLongTouchState() const { Write<uint16_t>(cfg::kLong_touch_state_u16_off, 0); }
+    void clearLongTouchState() const { Write<uint16_t>(cfg::autoplay::kLong_touch_state_u16_off, 0); }
 };
 
 class LogicHoldNote final : public LogicNote {
 public:
     using LogicNote::LogicNote;
 
-    void setHeadActivated(uint8_t v) const { Write<uint8_t>(cfg::kHold_headActivated_u8_off, v); }
+    void setHeadActivated(uint8_t v) const { Write<uint8_t>(cfg::autoplay::kHold_headActivated_u8_off, v); }
 };
 
 class LogicArcNote final : public LogicNote {
 public:
     using LogicNote::LogicNote;
 
-    bool isVoid() const { return Read<int32_t>(cfg::kArc_isVoid_i32_off) != 0; }
-    bool activeNow() const { return Read<uint8_t>(cfg::kArc_activeNow_u8_off) != 0; }
+    bool isVoid() const { return Read<int32_t>(cfg::autoplay::kArc_isVoid_i32_off) != 0; }
+    bool activeNow() const { return Read<uint8_t>(cfg::autoplay::kArc_activeNow_u8_off) != 0; }
 
-    float runtimeX() const { return Read<float>(cfg::kNote_runtime_x_f32_off); }
-    float runtimeY() const { return Read<float>(cfg::kNote_runtime_y_f32_off); }
+    float runtimeX() const { return Read<float>(cfg::autoplay::kNote_runtime_x_f32_off); }
+    float runtimeY() const { return Read<float>(cfg::autoplay::kNote_runtime_y_f32_off); }
 };
 
 class TouchLike final : public Object {
 public:
     using Object::Object;
 
-    int sys_id() const { return Read<int32_t>(cfg::kTouch_sys_id_i32_off); }
+    int sys_id() const { return Read<int32_t>(cfg::autoplay::kTouch_sys_id_i32_off); }
 };
 
 } // namespace arc_autoplay::game
