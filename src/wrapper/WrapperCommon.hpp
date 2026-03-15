@@ -9,11 +9,18 @@
 #include "features/NetworkLogger.hpp"
 #include "features/NetworkBlock.hpp"
 #include "manager/GameManager.hpp"
+#include "manager/GameVersionManager.hpp"
 
 namespace arc_autoplay::wrapper {
 
 inline uintptr_t FindGameLibraryBase() {
     return GameManager::Instance().GetOrFindGameLibBase();
+}
+
+inline void InitResolvedFeatures() {
+    Autoplay::Instance();
+    NetworkLogger::Instance();
+    NetworkBlock::Instance();
 }
 
 inline bool IsTargetPackage(const char *pkg) {
@@ -25,9 +32,9 @@ inline bool IsTargetPackage(const char *pkg) {
 }
 
 inline void InitFeatures() {
-    Autoplay::Instance();
-    NetworkLogger::Instance();
-    NetworkBlock::Instance();
+    auto &version_manager = GameVersionManager::Instance();
+    version_manager.SetResolvedCallback(&InitResolvedFeatures);
+    version_manager.EnsureInstalled();
 }
 
 } // namespace arc_autoplay::wrapper

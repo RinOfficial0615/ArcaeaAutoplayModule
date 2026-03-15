@@ -6,20 +6,11 @@
 
 namespace arc_autoplay::cfg::network_block {
 
-// Address constants for network hook points in `libcocos2dcpp.so`.
-//
-// Hooks are resolved by 16-byte signatures (preferred), with offsets used as a
-// fast validation hint.
-
-// HttpClient worker per-request processing (called on network thread).
-inline constexpr uintptr_t kLibcocos2dcpp_HttpClient_processRequest = 0x133E000;
-
-// curl_easy_setopt-like wrapper used throughout HttpClient worker path.
-inline constexpr uintptr_t kLibcocos2dcpp_Curl_easy_setopt = 0x0C2F838;
+// Version-specific network hook offsets live in `config/GameProfile.hpp`.
+// This file only keeps shared layouts, policy, and byte signatures.
 
 // Return values used by NetworkBlock hook.
 inline constexpr uint32_t kCurlSetoptRetBlocked = 0xB10Cu; // dedicated non-zero marker
-inline constexpr uint32_t kCurlSetoptRetNoOrig = 1u;       // conservative fallback error
 
 // Handler priorities (larger value runs earlier).
 inline constexpr int kHandlerPriorityNetworkLogger = 100;
@@ -56,7 +47,6 @@ inline constexpr size_t kHttpResponse_status_code_i64_off = 80;
 // libcurl option ids (for curl_easy_setopt)
 inline constexpr uint32_t kCurlOpt_URL = 10002;        // CURLOPT_URL
 inline constexpr uint32_t kCurlOpt_WriteData = 10001;  // CURLOPT_WRITEDATA
-inline constexpr uint32_t kCurlOpt_WriteFunction = 20011; // CURLOPT_WRITEFUNCTION
 inline constexpr uint32_t kCurlOpt_ErrorBuffer = 10010; // CURLOPT_ERRORBUFFER
 
 // Audit logging

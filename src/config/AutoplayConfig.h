@@ -6,28 +6,8 @@
 
 namespace arc_autoplay::cfg::autoplay {
 
-// Address constants used by autoplay hooks and binary patches.
-// Values are image-base-relative offsets into `libcocos2dcpp.so`.
-
-// Hook targets.
-inline constexpr uintptr_t kLibcocos2dcpp_Gameplay_processLogicNotes = 0x147671C;
-inline constexpr uintptr_t kLibcocos2dcpp_Gameplay_tryTapJudgementForTouch = 0x134BDA8;
-inline constexpr uintptr_t kLibcocos2dcpp_ScoreState_applyJudgement = 0x0ACEEF4;
-inline constexpr uintptr_t kLibcocos2dcpp_ScoreState_applyMiss = 0x0E532B0;
-
-inline constexpr uintptr_t kLibcocos2dcpp_ShowJudgementEffectAtNote = 0x1253E98;
-inline constexpr uintptr_t kLibcocos2dcpp_NoteEffect_onMiss = 0x1547754;
-inline constexpr uintptr_t kLibcocos2dcpp_NoteEffect_onJudgement = 0x15D3180;
-inline constexpr uintptr_t kLibcocos2dcpp_LogicColor_acceptsTouch = 0x116BA0C;
-
-// Small inline instruction patches.
-inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_a = 0x1476C04;
-inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_b = 0x1476CBC;
-inline constexpr uintptr_t kLibcocos2dcpp_Patch_ProcessLogicNotes_addC8 = 0x1476D0C;
-
-// RTTI/typeinfo anchors.
-inline constexpr uintptr_t kTypeinfo_LogicHoldNote = 0x18AAB60;
-inline constexpr uintptr_t kTypeinfo_LogicArcNote = 0x18265D0;
+// Version-specific function/type/patch offsets live in `config/GameProfile.hpp`.
+// This file only keeps shared layouts, tuning constants, and byte signatures.
 
 // Gameplay object layout.
 inline constexpr size_t kGameplay_timer_off = 48;
@@ -50,7 +30,6 @@ inline constexpr size_t kNote_runtime_x_f32_off = 204;
 inline constexpr size_t kNote_runtime_y_f32_off = 208;
 
 inline constexpr size_t kLong_touch_state_u16_off = 92;
-inline constexpr uint16_t kLong_touch_state_held = 0x0101;
 
 inline constexpr size_t kArc_isVoid_i32_off = 156;
 inline constexpr size_t kArc_activeNow_u8_off = 200;
@@ -81,7 +60,6 @@ inline constexpr int kLongEndLagMs = 0;
 // Track coordinate constants.
 inline constexpr float kTrackHalfWidth = 425.0f;
 inline constexpr float kTrackHeightHalf = 275.0f;
-inline constexpr float kGroundYWorld = 100.0f;
 
 // First 16 bytes at each hook target.
 inline constexpr std::array<uint8_t, 16> kSig_Gameplay_processLogicNotes = {

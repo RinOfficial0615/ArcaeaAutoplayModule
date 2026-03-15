@@ -9,6 +9,7 @@ LOCAL_SRC_FILES := \
     src/features/NetworkLogger.cpp \
     src/features/NetworkBlock.cpp \
     src/manager/GameManager.cpp \
+    src/manager/GameVersionManager.cpp \
     src/manager/NetworkManager.cpp \
     src/manager/HookManager.cpp \
     src/utils/memory/ProcMaps.cpp \

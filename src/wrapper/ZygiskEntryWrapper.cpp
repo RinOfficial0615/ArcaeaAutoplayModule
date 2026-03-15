@@ -29,27 +29,20 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
                                 jstring java_file_name,
                                 jobject java_loader,
                                 jobject caller) {
-    auto orig = reinterpret_cast<jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject)>(g_jni_method_hooks[0].fnPtr);
-    jstring ret = orig ? orig(env, runtime_class, java_file_name, java_loader, caller) : nullptr;
-    if (ret != nullptr) return ret;
+    static auto invoke_orig = [&]() {
+        auto orig = reinterpret_cast<jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject)>(g_jni_method_hooks[0].fnPtr);
+        return orig(env, runtime_class, java_file_name, java_loader, java_loader);
+    };
 
-    if (!java_file_name) return ret;
-
+    if (!java_file_name) return invoke_orig();
     const char *lib_name = env->GetStringUTFChars(java_file_name, nullptr);
     if (!lib_name) {
         ClearPendingJniException(env, "GetStringUTFChars(nativeLoad arg)");
-        return ret;
+        return invoke_orig();
     }
 
-    if (std::strstr(lib_name, cfg::module::kLibName) != nullptr) {
-        const uintptr_t lib_base = wrapper::FindGameLibraryBase();
-        if (!lib_base) {
-            ARC_LOGE("Failed to locate %s base", cfg::module::kLibName);
-        } else {
-            ARC_LOGI("Found %s base @ %p", cfg::module::kLibName, reinterpret_cast<void *>(lib_base));
-            wrapper::InitFeatures();
-        }
-
+    bool is_target = std::strstr(lib_name, cfg::module::kLibName) != nullptr;
+    if (is_target) {
         jclass cls = env->FindClass(cfg::module::kRuntimeClass);
         if (cls) {
             const jint rc = env->RegisterNatives(cls, g_jni_method_hooks, 1);
@@ -60,6 +53,19 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
             env->DeleteLocalRef(cls);
         } else {
             ClearPendingJniException(env, "FindClass(java/lang/Runtime)");
+        }
+    }
+    
+    auto ret = invoke_orig();
+    if (ret != nullptr) return ret; // nativeLoad failed
+
+    if (is_target) {
+        const uintptr_t lib_base = wrapper::FindGameLibraryBase();
+        if (!lib_base) {
+            ARC_LOGE("Failed to locate %s base", cfg::module::kLibName);
+        } else {
+            ARC_LOGI("Found %s base @ %p", cfg::module::kLibName, reinterpret_cast<void *>(lib_base));
+            wrapper::InitFeatures();
         }
     }
 

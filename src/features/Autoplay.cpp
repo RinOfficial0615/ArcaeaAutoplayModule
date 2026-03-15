@@ -1,5 +1,6 @@
 #include "features/Autoplay.hpp"
 
+#include "manager/GameVersionManager.hpp"
 #include "utils/Log.h"
 
 namespace arc_autoplay {
@@ -27,8 +28,13 @@ void Autoplay::EnsureInstalled() {
     // Idempotent: safe to call repeatedly.
     if (hook_setup_done_) return;
     if (!RefreshLibBase()) return;
-    TryInstallHooks();
-    hook_setup_done_ = hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(GameplayProcessLogicNotesHook));
+    auto &version_manager = GameVersionManager::Instance();
+    version_manager.EnsureInstalled();
+
+    const auto *profile = version_manager.GetActiveProfile();
+    if (!profile) return;
+
+    TryInstallHooks(*profile);
 }
 
 void Autoplay::InitTouchesIfNeeded() {
@@ -113,17 +119,23 @@ bool Autoplay::ArcHasValidPlaySceneVcall(game::LogicArcNote arc_note) const {
     if (!arc_note) return false;
 
     const uintptr_t ctx = arc_note.playSceneOrCtx();
-    if (!ctx || (ctx & 7) != 0) return false;
+    if (!ctx || (ctx & 7) != 0 || !mem::ProcMaps::IsReadable(ctx, sizeof(uintptr_t))) return false;
 
     const uintptr_t vtbl = mem::Read<uintptr_t>(ctx);
     if (!vtbl || (vtbl & 7) != 0) return false;
 
-    const uintptr_t fn = mem::Read<uintptr_t>(vtbl + cfg::autoplay::kArc_playScene_vcall_off);
+    const uintptr_t fn_addr = vtbl + cfg::autoplay::kArc_playScene_vcall_off;
+    if (!mem::ProcMaps::IsReadable(fn_addr, sizeof(uintptr_t))) return false;
+
+    const uintptr_t fn = mem::Read<uintptr_t>(fn_addr);
     return mem::IsAddrInLibraryExec(fn, cfg::module::kLibName);
 }
 
 void Autoplay::AutoplayLongNotesTick(game::Gameplay gameplay, int now_ms) {
     if (!lib_base_ || !gameplay) return;
+
+    const auto *profile = GameVersionManager::Instance().GetActiveProfile();
+    if (!profile) return;
 
     InitTouchesIfNeeded();
 
@@ -146,8 +158,8 @@ void Autoplay::AutoplayLongNotesTick(game::Gameplay gameplay, int now_ms) {
         return;
     }
 
-    const uintptr_t ti_arc = lib_base_ + cfg::autoplay::kTypeinfo_LogicArcNote;
-    const uintptr_t ti_hold = lib_base_ + cfg::autoplay::kTypeinfo_LogicHoldNote;
+    const uintptr_t ti_arc = lib_base_ + profile->autoplay.typeinfo_logic_arc_note;
+    const uintptr_t ti_hold = lib_base_ + profile->autoplay.typeinfo_logic_hold_note;
 
     hold_touch_stub_.SetSysId(cfg::autoplay::kSynthTouchHoldId);
     hold_touch_stub_.SetNdcXY(0.0f, 0.0f);
@@ -387,15 +399,17 @@ int64_t Autoplay::NoteEffectOnMissHook(uintptr_t self, uintptr_t note) {
     return Instance().OnNoteEffectOnMiss(self, note);
 }
 
-void Autoplay::TryInstallHooks() {
+void Autoplay::TryInstallHooks(const cfg::GameProfile &profile) {
     if (!lib_base_) return;
+
+    const auto &offsets = profile.autoplay;
 
     if (!patched_logicnote_miss_offsets_) {
         // Patch small immediates in the logic note processing loop.
-        // Offsets are defined in `cfg::autoplay`.
-        const uintptr_t p64a = lib_base_ + cfg::autoplay::kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_a;
-        const uintptr_t p64b = lib_base_ + cfg::autoplay::kLibcocos2dcpp_Patch_ProcessLogicNotes_add64_b;
-        const uintptr_t pc8 = lib_base_ + cfg::autoplay::kLibcocos2dcpp_Patch_ProcessLogicNotes_addC8;
+        // Offsets are provided by the active game profile.
+        const uintptr_t p64a = lib_base_ + offsets.patch_process_logic_notes_add64_a;
+        const uintptr_t p64b = lib_base_ + offsets.patch_process_logic_notes_add64_b;
+        const uintptr_t pc8 = lib_base_ + offsets.patch_process_logic_notes_addc8;
         const bool ok = mem::Patcher::PatchA64ClearImm12(p64a, 0x11019148) &&
                         mem::Patcher::PatchA64ClearImm12(p64b, 0x11019148) &&
                         mem::Patcher::PatchA64ClearImm12(pc8, 0x11032148);
@@ -404,38 +418,38 @@ void Autoplay::TryInstallHooks() {
     }
 
     hook_manager_.InstallInlineHook(addr_score_state_apply_judgement_,
-                                    cfg::autoplay::kLibcocos2dcpp_ScoreState_applyJudgement,
+                                    offsets.score_state_apply_judgement,
                                     cfg::autoplay::kSig_ScoreState_applyJudgement,
                                     ScoreStateApplyJudgementHook,
                                     "ScoreState_applyJudgement");
 
     hook_manager_.InstallInlineHook(addr_score_state_apply_miss_,
-                                    cfg::autoplay::kLibcocos2dcpp_ScoreState_applyMiss,
+                                    offsets.score_state_apply_miss,
                                     cfg::autoplay::kSig_ScoreState_applyMiss,
                                     ScoreStateApplyMissHook,
                                     "ScoreState_applyMiss");
 
     hook_manager_.InstallInlineHook(addr_gameplay_process_logic_notes_,
-                                    cfg::autoplay::kLibcocos2dcpp_Gameplay_processLogicNotes,
+                                    offsets.gameplay_process_logic_notes,
                                     cfg::autoplay::kSig_Gameplay_processLogicNotes,
                                     GameplayProcessLogicNotesHook,
                                     "Gameplay_processLogicNotes");
 
     hook_manager_.InstallInlineHook(addr_show_judgement_effect_at_note_,
-                                    cfg::autoplay::kLibcocos2dcpp_ShowJudgementEffectAtNote,
+                                    offsets.show_judgement_effect_at_note,
                                     cfg::autoplay::kSig_ShowJudgementEffectAtNote,
                                     ShowJudgementEffectAtNoteHook,
                                     "ShowJudgementEffectAtNote");
 
     hook_manager_.InstallInlineHook(addr_gameplay_try_tap_judgement_for_touch_,
-                                    cfg::autoplay::kLibcocos2dcpp_Gameplay_tryTapJudgementForTouch,
+                                    offsets.gameplay_try_tap_judgement_for_touch,
                                     cfg::autoplay::kSig_Gameplay_tryTapJudgementForTouch,
                                     GameplayTryTapJudgementForTouchHook,
                                     "Gameplay_tryTapJudgementForTouch");
 
     if (!patched_logiccolor_accepts_touch_ &&
         hook_manager_.ResolveAddress(addr_logic_color_accepts_touch_,
-                                     cfg::autoplay::kLibcocos2dcpp_LogicColor_acceptsTouch,
+                                     offsets.logic_color_accepts_touch,
                                      cfg::autoplay::kSig_LogicColor_acceptsTouch,
                                      "LogicColor_acceptsTouch")) {
         // Force LogicColor::acceptsTouch() to always return true:
@@ -449,16 +463,29 @@ void Autoplay::TryInstallHooks() {
     }
 
     hook_manager_.ResolveFunctionPtr(addr_note_effect_on_judgement_,
-                                     cfg::autoplay::kLibcocos2dcpp_NoteEffect_onJudgement,
+                                     offsets.note_effect_on_judgement,
                                      cfg::autoplay::kSig_NoteEffect_onJudgement,
                                      note_effect_on_judgement_,
                                      "NoteEffect_onJudgement");
 
     hook_manager_.InstallInlineHook(addr_note_effect_on_miss_,
-                                    cfg::autoplay::kLibcocos2dcpp_NoteEffect_onMiss,
+                                    offsets.note_effect_on_miss,
                                     cfg::autoplay::kSig_NoteEffect_onMiss,
                                     NoteEffectOnMissHook,
                                     "NoteEffect_onMiss");
+
+    const bool hooks_ready =
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(ScoreStateApplyJudgementHook)) &&
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(ScoreStateApplyMissHook)) &&
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(GameplayProcessLogicNotesHook)) &&
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(ShowJudgementEffectAtNoteHook)) &&
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(GameplayTryTapJudgementForTouchHook)) &&
+        hook_manager_.HasOriginalForHook(reinterpret_cast<void *>(NoteEffectOnMissHook));
+
+    hook_setup_done_ = hooks_ready &&
+                       patched_logicnote_miss_offsets_ &&
+                       patched_logiccolor_accepts_touch_ &&
+                       note_effect_on_judgement_ != nullptr;
 }
 
 } // namespace arc_autoplay

@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdint>
 
+#include "config/GameProfile.hpp"
 #include "features/Feature.hpp"
 #include "GameTypes.hpp"
 
@@ -93,7 +94,7 @@ private:
     explicit Autoplay(bool enabled);
 
     void EnsureInstalled();
-    void TryInstallHooks();
+    void TryInstallHooks(const cfg::GameProfile &profile);
 
     // Hook callbacks.
     void OnGameplayProcessLogicNotes(game::Gameplay gameplay, uintptr_t play_scene_or_ctx);

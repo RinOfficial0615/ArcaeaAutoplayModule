@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "config/ModuleConfig.h"
+#include "manager/GameVersionManager.hpp"
 #include "utils/Log.h"
 #include "utils/MemoryUtils.hpp"
 
@@ -224,18 +225,23 @@ bool NetworkManager::EnsureHooksInstalled() {
     if (hooks_installed_) return true;
     if (handlers_.empty()) return true;
 
+    auto &version_manager = GameVersionManager::Instance();
+    version_manager.EnsureInstalled();
+    const auto *profile = version_manager.GetActiveProfile();
+    if (!profile) return false;
+
     hook_manager_.EnsureReady();
     lib_base_ = hook_manager_.GetLibBase();
     if (!lib_base_) return false;
 
     hook_manager_.InstallInlineHook(addr_httpclient_process_request_,
-                                    cfg::network_block::kLibcocos2dcpp_HttpClient_processRequest,
+                                    profile->network.httpclient_process_request,
                                     cfg::network_block::kSig_HttpClient_processRequest,
                                     HttpClientProcessRequestHook,
                                     "HttpClient_processRequest");
 
     hook_manager_.InstallInlineHook(addr_curl_easy_setopt_,
-                                    cfg::network_block::kLibcocos2dcpp_Curl_easy_setopt,
+                                    profile->network.curl_easy_setopt,
                                     cfg::network_block::kSig_Curl_easy_setopt,
                                     CurlEasySetoptHook,
                                     "curl_easy_setopt",
