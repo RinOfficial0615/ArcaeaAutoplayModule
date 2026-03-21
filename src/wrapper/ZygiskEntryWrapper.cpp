@@ -29,16 +29,13 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
                                 jstring java_file_name,
                                 jobject java_loader,
                                 jobject caller) {
-    static auto invoke_orig = [&]() {
-        auto orig = reinterpret_cast<jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject)>(g_jni_method_hooks[0].fnPtr);
-        return orig(env, runtime_class, java_file_name, java_loader, java_loader);
-    };
+#define ORIG() reinterpret_cast<jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject)>(g_jni_method_hooks[0].fnPtr);
 
-    if (!java_file_name) return invoke_orig();
+    if (!java_file_name) return ORIG();
     const char *lib_name = env->GetStringUTFChars(java_file_name, nullptr);
     if (!lib_name) {
         ClearPendingJniException(env, "GetStringUTFChars(nativeLoad arg)");
-        return invoke_orig();
+        return ORIG();
     }
 
     bool is_target = std::strstr(lib_name, cfg::module::kLibName) != nullptr;
@@ -56,7 +53,7 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
         }
     }
     
-    auto ret = invoke_orig();
+    auto ret = ORIG();
     if (ret != nullptr) return ret; // nativeLoad failed
 
     if (is_target) {
@@ -71,6 +68,8 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
 
     env->ReleaseStringUTFChars(java_file_name, lib_name);
     return ret;
+
+#undef ORIG
 }
 
 void InitJniHooks() {
