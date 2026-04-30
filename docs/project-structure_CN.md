@@ -4,32 +4,33 @@ Language: [English](project-structure.md) | 简体中文
 
 ## 源码树
 
-- `src/wrapper/ZygiskEntryWrapper.cpp`：Zygisk 入口，以及 `Runtime.nativeLoad` Hook。
-- `src/wrapper/JniEntryWrapper.cpp`：JNI 入口（`JNI_OnLoad`），用于 `libcocos2dcpp.so` 加载后的注入路径。
-- `src/wrapper/WrapperCommon.hpp`：包装层公共辅助（游戏库检测、包名校验、功能初始化）。
-- `src/manager/GameManager.{hpp,cpp}`：缓存共享运行时状态（当前主要是 `libcocos2dcpp.so` 基址）。
-- `src/manager/GameVersionManager.{hpp,cpp}`：解析真实游戏版本，并切换到对应的运行时 profile。
-- `src/manager/HookManager.{hpp,cpp}`：通用解析/Hook 管理器（`InstallInlineHook`、`CALL_ORIG`、Hook 恢复辅助）。
-- `src/manager/NetworkManager.{hpp,cpp}`：管理网络 Hook、构建请求上下文，并按优先级分发已注册处理器。
-- `src/manager/network/NetworkHandler.hpp`：统一处理器 API（`HandlerArgs`、`ActiveRequestCtx`、阶段、body 视图）。
-- `src/features/Feature.hpp`：功能基类；接入通用管理器访问与缓存库基址。
-- `src/features/Autoplay.{hpp,cpp}`：游玩逻辑 Hook、自动游玩流程和核心游戏行为补丁。
-- `src/features/NetworkLogger.{hpp,cpp}`：高优先级网络审计处理器（请求/响应日志）。
-- `src/features/NetworkBlock.{hpp,cpp}`：最低优先级网络拦截策略处理器。
-- `src/GameTypes.hpp`：`Gameplay`、`LogicArcNote`、`LogicHoldNote` 等轻量封装（基于偏移）。
-- `src/utils/MemoryUtils.hpp`：内存工具兼容汇总头。
-- `src/utils/memory/*.hpp|*.cpp`：拆分后的内存工具（`ProcMaps`、`AddressResolver`、`Patcher`、`InlineHook`、可执行区间辅助）。
-- `src/utils/Log.h`：日志宏。
-- `src/config/GameProfile.hpp`：按版本划分的运行时 profile 表（`6.12.11c` / `6.13.2f`）。
-- `src/config/AutoplayConfig.h`：自动游玩的共享布局、行为常量和字节签名。
-- `src/config/NetworkBlockConfig.h`：网络的共享布局、策略和字节签名。
-- `src/config/ModuleConfig.h`：模块共享常量、目标包名列表和功能开关。
-- 配置命名空间布局：`arc_autoplay::cfg::module`、`arc_autoplay::cfg::autoplay`、`arc_autoplay::cfg::network_block`。
+- `src/wrapper/ZygiskEntryWrapper.cpp` — Zygisk 入口，Hook `Runtime.nativeLoad`
+- `src/wrapper/JniEntryWrapper.cpp` — JNI 入口 (`JNI_OnLoad`)，用于 `libcocos2dcpp.so` 之后加载
+- `src/wrapper/WrapperCommon.hpp` — 公共初始化逻辑、包名校验、功能启动
+- `src/manager/GameManager.{hpp,cpp}` — 缓存 `libcocos2dcpp.so` 基址
+- `src/manager/GameVersionManager.{hpp,cpp}` — 探测游戏版本，激活对应 profile
+- `src/manager/HookManager.{hpp,cpp}` — inline hook 辅助（`InstallInlineHook`、`CALL_ORIG`、恢复）
+- `src/manager/NetworkManager.{hpp,cpp}` — 网络 Hook、handler 分发
+- `src/manager/network/NetworkHandler.hpp` — handler API（`HandlerArgs`、body 视图、阶段）
+- `src/features/Feature.hpp` — 功能基类，库基址缓存
+- `src/features/Autoplay.{hpp,cpp}` — 自动打歌 Hook、合成触摸、字节补丁
+- `src/features/NetworkLogger.{hpp,cpp}` — 高优先级请求/响应审计
+- `src/features/NetworkBlock.{hpp,cpp}` — 低优先级 URL 拦截策略
+- `src/features/SslPinningBypass.{hpp,cpp}` — SSL 证书绑定移除（两处字节补丁）
+- `src/GameTypes.hpp` — `Gameplay`、`LogicArcNote`、`LogicHoldNote` 等轻量封装
+- `src/utils/MemoryUtils.hpp` — 内存工具汇总头
+- `src/utils/memory/*.hpp|*.cpp` — `ProcMaps`、`AddressResolver`、`Patcher`、`InlineHook`
+- `src/utils/Log.h` — `ARC_LOGI` / `ARC_LOGE` 宏
+- `src/config/GameStructs.hpp` — 按版本模板化的布局 struct（显式 padding，`offsetof` 校验）
+- `src/config/GameProfile.hpp` — 各版本的函数/RTTI/patch 偏移
+- `src/config/AutoplayConfig.h` — 自动打歌的行为常量和字节签名
+- `src/config/NetworkBlockConfig.h` — 网络策略、拦截规则、字节签名
+- `src/config/ModuleConfig.h` — 功能开关、目标包名
 
 ## 初始化流程
 
-1. 包装层检测到 `libcocos2dcpp.so` 就绪，并使用 `GameManager` 缓存的基址。
-2. Zygisk 包装层在 `WrapperCommon` 中校验包名；JNI 包装层跳过包名校验。
-3. `GameVersionManager` 先判断候选版本，并等待真实 `appVersion` 字符串。
-4. 版本确认后，包装层回调才会实例化各个功能单例。
-5. 各功能随后再通过 `HookManager` 按当前 profile 安装 Hook。
+1. Wrapper 检测到 `libcocos2dcpp.so` 就绪 → 缓存基址至 `GameManager`。
+2. Zygisk 路径校验包名；JNI 路径跳过包名校验。
+3. `GameVersionManager` 判断候选版本，等待真实 `appVersion` 确认。
+4. 版本确认后，wrapper 回调实例化全部功能单例。
+5. 各功能按当前 profile 通过 `HookManager` 安装 Hook。

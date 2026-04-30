@@ -4,10 +4,15 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "config/GameStructs.hpp"
+
 namespace arc_autoplay::cfg::network_block {
 
-// Version-specific network hook offsets live in `config/GameProfile.hpp`.
-// This file only keeps shared layouts, policy, and byte signatures.
+// ---------------------------------------------------------------------------
+//  Offsets computed from `layouts::*` mirror structs (see `GameStructs.hpp`).
+//  All layouts are verified identical for 6.12.11c and 6.13.2f.
+// ---------------------------------------------------------------------------
+constexpr GameVersionId kLayoutVer = GameVersionId::k61211c;
 
 // Return values used by NetworkBlock hook.
 inline constexpr uint32_t kCurlSetoptRetBlocked = 0xB10Cu; // dedicated non-zero marker
@@ -32,17 +37,14 @@ inline constexpr std::array<uint8_t, 16> kSig_Curl_easy_setopt = {
     0xA2, 0x0F, 0x39, 0xA9,
 };
 
-// HttpRequest layout.
-// These offsets come from decomp of the HttpClient worker path.
-inline constexpr size_t kHttpRequest_type_u32_off = 12;          // 0=GET,1=POST,2=PUT,3=DELETE
-inline constexpr size_t kHttpRequest_body_begin_ptr_off = 40;    // begin pointer (POST/PUT)
-inline constexpr size_t kHttpRequest_body_end_ptr_off = 48;      // end pointer (POST/PUT)
+inline constexpr size_t kHttpRequest_type_u32_off        = offsetof(layouts::HttpRequest<kLayoutVer>, type);
+inline constexpr size_t kHttpRequest_body_begin_ptr_off  = offsetof(layouts::HttpRequest<kLayoutVer>, bodyBegin);
+inline constexpr size_t kHttpRequest_body_end_ptr_off    = offsetof(layouts::HttpRequest<kLayoutVer>, bodyEnd);
 
-// HttpResponse layout.
-inline constexpr size_t kHttpResponse_request_ptr_off = 16;
-inline constexpr size_t kHttpResponse_succeed_u8_off = 24;
-inline constexpr size_t kHttpResponse_body_vec_off = 32; // std::vector<char>
-inline constexpr size_t kHttpResponse_status_code_i64_off = 80;
+inline constexpr size_t kHttpResponse_request_ptr_off     = offsetof(layouts::HttpResponse<kLayoutVer>, request);
+inline constexpr size_t kHttpResponse_succeed_u8_off      = offsetof(layouts::HttpResponse<kLayoutVer>, succeed);
+inline constexpr size_t kHttpResponse_body_vec_off        = offsetof(layouts::HttpResponse<kLayoutVer>, bodyVec);
+inline constexpr size_t kHttpResponse_status_code_i64_off  = offsetof(layouts::HttpResponse<kLayoutVer>, statusCode);
 
 // libcurl option ids (for curl_easy_setopt)
 inline constexpr uint32_t kCurlOpt_URL = 10002;        // CURLOPT_URL
@@ -91,9 +93,10 @@ struct NetworkBlockRule {
 };
 
 // Block rules (match by URL postfix/path; API base prefix can change).
-inline constexpr std::array<NetworkBlockRule, 8> kBlockRules = {{
+inline constexpr std::array<NetworkBlockRule, 9> kBlockRules = {{
     {"world/map/me", kMethodGet | kMethodPost, RuleMatchType::PathPrefix, "/world/map/me"},
     {"score/token/world", kMethodGet, RuleMatchType::PathSuffix, "/score/token/world"},
+    {"course/me", kMethodGet, RuleMatchType::PathSuffix, "/course/me"},
     {"score/song (POST)", kMethodPost, RuleMatchType::PathSuffix, "/score/song"},
     {"score/token", kMethodGet, RuleMatchType::PathSuffix, "/score/token"},
     {"user/me/save (POST)", kMethodPost, RuleMatchType::PathSuffix, "/user/me/save"},

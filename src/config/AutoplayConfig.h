@@ -4,51 +4,51 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "config/GameStructs.hpp"
+
 namespace arc_autoplay::cfg::autoplay {
 
-// Version-specific function/type/patch offsets live in `config/GameProfile.hpp`.
-// This file only keeps shared layouts, tuning constants, and byte signatures.
+// ---------------------------------------------------------------------------
+//  Offsets computed from `layouts::*` mirror structs (see `GameStructs.hpp`).
+//  All layouts are verified identical for 6.12.11c / 6.13.2f / 6.14.0c.
+// ---------------------------------------------------------------------------
+constexpr GameVersionId kLayoutVer = GameVersionId::k61211c;
 
-// Gameplay object layout.
-inline constexpr size_t kGameplay_timer_off = 48;
-inline constexpr size_t kGameplay_note_begin_off = 160;
-inline constexpr size_t kGameplay_note_end_off = 168;
+inline constexpr size_t kGameplay_timer_off         = offsetof(layouts::Gameplay<kLayoutVer>, timer);
+inline constexpr size_t kGameplay_note_begin_off    = offsetof(layouts::Gameplay<kLayoutVer>, note_begin);
+inline constexpr size_t kGameplay_note_end_off      = offsetof(layouts::Gameplay<kLayoutVer>, note_end);
 
-// LogicNote / derived layout.
-inline constexpr size_t kNote_active_u8_off = 84;
-inline constexpr size_t kNote_timeStart_i32_off = 24;
-inline constexpr size_t kNote_timeEnd_i32_off = 28;
-inline constexpr size_t kNote_pos_ptr_off = 32;
-inline constexpr size_t kNote_play_scene_ptr_off = 0x40;
+inline constexpr size_t kNote_active_u8_off         = offsetof(layouts::Note<kLayoutVer>, active);
+inline constexpr size_t kNote_timeStart_i32_off     = offsetof(layouts::Note<kLayoutVer>, timeStart);
+inline constexpr size_t kNote_timeEnd_i32_off       = offsetof(layouts::Note<kLayoutVer>, timeEnd);
+inline constexpr size_t kNote_pos_ptr_off           = offsetof(layouts::Note<kLayoutVer>, pos_ptr);
+inline constexpr size_t kNote_play_scene_ptr_off    = offsetof(layouts::Note<kLayoutVer>, playSceneCtx);
+inline constexpr size_t kNote_runtime_x_f32_off     = offsetof(layouts::Note<kLayoutVer>, runtimeX);
+inline constexpr size_t kNote_runtime_y_f32_off     = offsetof(layouts::Note<kLayoutVer>, runtimeY);
+inline constexpr size_t kLong_touch_state_u16_off   = offsetof(layouts::Note<kLayoutVer>, longTouchState);
+
+inline constexpr size_t kNote_pos_xnorm_f32_off     = offsetof(layouts::NotePosition<kLayoutVer>, xNorm);
+
+inline constexpr size_t kArc_isVoid_i32_off         = offsetof(layouts::ArcNote<kLayoutVer>, isVoid);
+inline constexpr size_t kArc_activeNow_u8_off       = offsetof(layouts::ArcNote<kLayoutVer>, activeNow);
+
+inline constexpr size_t kHold_headActivated_u8_off  = offsetof(layouts::HoldNote<kLayoutVer>, headActivated);
+
+inline constexpr size_t kTimer_flag_u8_off          = offsetof(layouts::Timer<kLayoutVer>, flag);
+inline constexpr size_t kTimer_msA_i32_off          = offsetof(layouts::Timer<kLayoutVer>, msA);
+inline constexpr size_t kTimer_msB_i32_off          = offsetof(layouts::Timer<kLayoutVer>, msB);
+inline constexpr size_t kTimer_msC_i32_off          = offsetof(layouts::Timer<kLayoutVer>, msC);
+
+inline constexpr size_t kTouch_sys_id_i32_off       = offsetof(layouts::TouchLike<kLayoutVer>, sysId);
+inline constexpr size_t kTouch_ndc_x_f32_off        = offsetof(layouts::TouchLike<kLayoutVer>, ndcX);
+inline constexpr size_t kTouch_ndc_y_f32_off        = offsetof(layouts::TouchLike<kLayoutVer>, ndcY);
+inline constexpr size_t kTouch_uid_i32_off          = offsetof(layouts::TouchLike<kLayoutVer>, touchUid);
+inline constexpr size_t kTouch_timestamp_i32_off    = offsetof(layouts::TouchLike<kLayoutVer>, timestamp);
 
 // vtable offsets (byte offsets from vptr).
 inline constexpr size_t kLogicNote_vcall_canApplyJudgement_off = 0x20;
-inline constexpr size_t kLogicNote_vcall_setBeingTouched_off = 96;
-
-inline constexpr size_t kNote_pos_xnorm_f32_off = 20;
-inline constexpr size_t kNote_runtime_x_f32_off = 204;
-inline constexpr size_t kNote_runtime_y_f32_off = 208;
-
-inline constexpr size_t kLong_touch_state_u16_off = 92;
-
-inline constexpr size_t kArc_isVoid_i32_off = 156;
-inline constexpr size_t kArc_activeNow_u8_off = 200;
-inline constexpr size_t kArc_playScene_vcall_off = 0x530;
-
-inline constexpr size_t kHold_headActivated_u8_off = 160;
-
-// Timer layout.
-inline constexpr size_t kTimer_flag_u8_off = 45;
-inline constexpr size_t kTimer_msA_i32_off = 32;
-inline constexpr size_t kTimer_msB_i32_off = 40;
-inline constexpr size_t kTimer_msC_i32_off = 52;
-
-// Touch-like layout used by synthetic stubs.
-inline constexpr size_t kTouch_sys_id_i32_off = 0x0C;
-inline constexpr size_t kTouch_ndc_x_f32_off = 0x1C;
-inline constexpr size_t kTouch_ndc_y_f32_off = 0x20;
-inline constexpr size_t kTouch_uid_i32_off = 0x34;
-inline constexpr size_t kTouch_timestamp_i32_off = 0x3C;
+inline constexpr size_t kLogicNote_vcall_setBeingTouched_off   = 96;
+inline constexpr size_t kArc_playScene_vcall_off               = 0x530;
 
 // Runtime behavior knobs.
 inline constexpr int kSynthTouchBaseId = 100;

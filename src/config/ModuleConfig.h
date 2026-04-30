@@ -18,5 +18,6 @@ inline constexpr const char *kTargetPackages[] = {
 inline constexpr bool kAutoplayEnabled = true;
 inline constexpr bool kNetworkLoggerEnabled = true;
 inline constexpr bool kNetworkBlockEnabled = true;
+inline constexpr bool kDisableSslPinsEnabled = false;
 
 } // namespace arc_autoplay::cfg::module

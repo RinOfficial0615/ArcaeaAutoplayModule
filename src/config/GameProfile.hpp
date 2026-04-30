@@ -10,6 +10,7 @@ enum class GameVersionId : uint8_t {
     kUnknown = 0,
     k61211c,
     k6132f,
+    k6140c,
 };
 
 struct VersionProbeOffsets {
@@ -38,15 +39,21 @@ struct NetworkOffsets {
     uintptr_t curl_easy_setopt = 0;
 };
 
+struct SslPinsOffsets {
+    uintptr_t skip_cbz = 0;     // CBZ X20,skip → B skip
+    uintptr_t tail_call = 0;    // BL sub_XXXX → NOP
+};
+
 struct GameProfile {
     GameVersionId id = GameVersionId::kUnknown;
     const char *version_name = nullptr;
     VersionProbeOffsets version_probe{};
     AutoplayOffsets autoplay{};
     NetworkOffsets network{};
+    SslPinsOffsets ssl_pins{};
 };
 
-inline constexpr std::array<GameProfile, 2> kSupportedGameProfiles = {{
+inline constexpr std::array<GameProfile, 3> kSupportedGameProfiles = {{
     {
         .id = GameVersionId::k61211c,
         .version_name = "6.12.11c",
@@ -72,6 +79,10 @@ inline constexpr std::array<GameProfile, 2> kSupportedGameProfiles = {{
         .network = {
             .httpclient_process_request = 0x133E000,
             .curl_easy_setopt = 0x0C2F838,
+        },
+        .ssl_pins = {
+            .skip_cbz = 0xBBCB24,
+            .tail_call = 0xBBF3F0,
         },
     },
     {
@@ -99,6 +110,38 @@ inline constexpr std::array<GameProfile, 2> kSupportedGameProfiles = {{
         .network = {
             .httpclient_process_request = 0x1550024,
             .curl_easy_setopt = 0x0D8FD08,
+        },
+        .ssl_pins = {},
+    },
+    {
+        .id = GameVersionId::k6140c,
+        .version_name = "6.14.0c",
+        .version_probe = {
+            .set_app_version = 0x89F528,
+            .app_version_string = 0x1984120,
+        },
+        .autoplay = {
+            .gameplay_process_logic_notes = 0x1511C64,
+            .gameplay_try_tap_judgement_for_touch = 0x8282E8,
+            .score_state_apply_judgement = 0x97332C,
+            .score_state_apply_miss = 0x179222C,
+            .show_judgement_effect_at_note = 0x89D48C,
+            .note_effect_on_miss = 0x1363C88,
+            .note_effect_on_judgement = 0xDE4060,
+            .logic_color_accepts_touch = 0xEA9488,
+            .patch_process_logic_notes_add64_a = 0x151214C,
+            .patch_process_logic_notes_add64_b = 0x1512204,
+            .patch_process_logic_notes_addc8 = 0x1512254,
+            .typeinfo_logic_hold_note = 0x18960F0,
+            .typeinfo_logic_arc_note = 0x1891500,
+        },
+        .network = {
+            .httpclient_process_request = 0x127FFE4,
+            .curl_easy_setopt = 0xFC8250,
+        },
+        .ssl_pins = {
+            .skip_cbz = 0x10D462C,
+            .tail_call = 0x10D6EF8,
         },
     },
 }};

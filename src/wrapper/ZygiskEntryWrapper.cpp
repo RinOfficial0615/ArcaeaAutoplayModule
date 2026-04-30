@@ -24,18 +24,29 @@ void ClearPendingJniException(JNIEnv *env, const char *where) {
     env->ExceptionClear();
 }
 
+using OrigNativeLoad = jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject);
+
+// When called from zygisk's hookJniNativeMethods path, fnPtr holds the
+// real Runtime.nativeLoad.  A non-capturing helper avoids the lambda-static
+// bug (static [&] captures stale stack pointers after the first invocation).
+inline jstring CallOrigNativeLoad(JNIEnv *env, jclass cls, jstring name,
+                                  jobject loader, jobject caller) {
+    return reinterpret_cast<OrigNativeLoad>(g_jni_method_hooks[0].fnPtr)(
+        env, cls, name, loader, caller);
+}
+
 jstring Runtime_nativeLoad_hook(JNIEnv *env,
                                 jclass runtime_class,
                                 jstring java_file_name,
                                 jobject java_loader,
-                                jobject caller) {
-#define ORIG() reinterpret_cast<jstring (*)(JNIEnv *, jclass, jstring, jobject, jobject)>(g_jni_method_hooks[0].fnPtr);
+                                jobject /*caller*/) {
+    if (!java_file_name)
+        return CallOrigNativeLoad(env, runtime_class, java_file_name, java_loader, java_loader);
 
-    if (!java_file_name) return ORIG();
     const char *lib_name = env->GetStringUTFChars(java_file_name, nullptr);
     if (!lib_name) {
         ClearPendingJniException(env, "GetStringUTFChars(nativeLoad arg)");
-        return ORIG();
+        return CallOrigNativeLoad(env, runtime_class, java_file_name, java_loader, java_loader);
     }
 
     bool is_target = std::strstr(lib_name, cfg::module::kLibName) != nullptr;
@@ -52,9 +63,9 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
             ClearPendingJniException(env, "FindClass(java/lang/Runtime)");
         }
     }
-    
-    auto ret = ORIG();
-    if (ret != nullptr) return ret; // nativeLoad failed
+
+    auto ret = CallOrigNativeLoad(env, runtime_class, java_file_name, java_loader, java_loader);
+    if (ret != nullptr) return ret;
 
     if (is_target) {
         const uintptr_t lib_base = wrapper::FindGameLibraryBase();
@@ -68,8 +79,6 @@ jstring Runtime_nativeLoad_hook(JNIEnv *env,
 
     env->ReleaseStringUTFChars(java_file_name, lib_name);
     return ret;
-
-#undef ORIG
 }
 
 void InitJniHooks() {

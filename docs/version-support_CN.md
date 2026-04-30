@@ -2,26 +2,31 @@
 
 Language: [English](version-support.md) | 简体中文
 
-## 当前支持的版本
+## 当前支持版本
 
 - `6.12.11c`
 - `6.13.2f`
+- `6.14.0c`
 
-## 运行时如何识别版本
+## 运行时识别
 
-1. wrapper 先等待 `libcocos2dcpp.so` 完成加载。
-2. `GameVersionManager` 先用已知的 `Java_low_moe_AppActivity_setAppVersion` 偏移判断候选版本。
-3. 然后读取或 Hook 原生侧的 `appVersion` setter / 全局字符串，等待游戏自己上报真实版本号。
-4. 只有当版本字符串与支持列表完全匹配时，模块才会继续安装 autoplay / network hooks。
+1. Wrapper 等待 `libcocos2dcpp.so` 完成映射。
+2. `GameVersionManager` 用已知的 `Java_low_moe_AppActivity_setAppVersion` 偏移判断候选版本。
+3. 然后读取或 Hook 原生 `appVersion` setter / 全局，等游戏上报真实版本号。
+4. 版本字符串与支持列表完全匹配后，才会安装 Hook。
 
-这样做可以让不支持的版本停留在“已检测但未启用”的安全状态，而不是误用错误偏移。
+不支持的版本会停在"已检测"状态，不会误用错误偏移。
 
-## 配置表位置
+## 新增版本
 
-- 各版本的 hook 偏移集中在 `src/config/GameProfile.hpp`。
-- 共享的签名、结构布局常量和行为配置仍放在 `src/config/AutoplayConfig.h` 与 `src/config/NetworkBlockConfig.h`。
+1. 在 `src/config/GameProfile.hpp` 中新增 `GameVersionId` 枚举值。
+2. 填入版本探测偏移（`set_app_version` + `app_version_string` 全局）。
+3. 填入该版本的 autoplay / network / ssl_pins 偏移。
+4. 若对象布局发生变化，在 `src/config/GameStructs.hpp` 特化对应模板。
+5. 更新本文档。
 
-## 说明
+## 偏移组织
 
-- JNI 和 Zygisk 两条注入路径共用同一套版本识别逻辑。
-- 如果 `appVersion` 还没有解析出来，功能安装会先延后，并在版本 setter 被调用后自动重试。
+- **对象布局** — `src/config/GameStructs.hpp`（版本模板化，`offsetof` + `static_assert` 编译期校验）。
+- **共享常量和字节签名** — `src/config/AutoplayConfig.h` / `src/config/NetworkBlockConfig.h`。
+- **函数 / RTTI / patch 偏移** — `src/config/GameProfile.hpp`（每个支持版本一条记录）。

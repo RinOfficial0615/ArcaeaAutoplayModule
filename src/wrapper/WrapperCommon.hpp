@@ -8,6 +8,7 @@
 #include "features/Autoplay.hpp"
 #include "features/NetworkLogger.hpp"
 #include "features/NetworkBlock.hpp"
+#include "features/SslPinningBypass.hpp"
 #include "manager/GameManager.hpp"
 #include "manager/GameVersionManager.hpp"
 
@@ -21,6 +22,7 @@ inline void InitResolvedFeatures() {
     Autoplay::Instance();
     NetworkLogger::Instance();
     NetworkBlock::Instance();
+    SslPinningBypass::Instance();
 }
 
 inline bool IsTargetPackage(const char *pkg) {

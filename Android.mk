@@ -8,6 +8,7 @@ LOCAL_SRC_FILES := \
     src/features/Autoplay.cpp \
     src/features/NetworkLogger.cpp \
     src/features/NetworkBlock.cpp \
+    src/features/SslPinningBypass.cpp \
     src/manager/GameManager.cpp \
     src/manager/GameVersionManager.cpp \
     src/manager/NetworkManager.cpp \
