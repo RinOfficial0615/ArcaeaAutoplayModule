@@ -168,7 +168,12 @@ std::optional<int> SlotFromPathOrDifficulty(std::string_view path, std::string_v
     if (d.find("past") != std::string::npos) return cfg::custom_charts::kPastDifficulty;
     if (d.find("present") != std::string::npos) return cfg::custom_charts::kPresentDifficulty;
     if (d.find("future") != std::string::npos) return cfg::custom_charts::kFutureDifficulty;
-    if (d.find("beyond") != std::string::npos) return cfg::custom_charts::kBeyondDifficulty;
+    // 7.0 Inscribed charts share the engine's class-3 slot with Beyond
+    // (`ratingClass: 3` + `ratingClassAlias` in official songlists).
+    if (d.find("inscribed") != std::string::npos ||
+        d.find("beyond") != std::string::npos) {
+        return cfg::custom_charts::kBeyondDifficulty;
+    }
     if (d.find("eternal") != std::string::npos) return cfg::custom_charts::kEternalDifficulty;
     return std::nullopt;
 }
@@ -938,6 +943,11 @@ bool CustomChartImporter::ImportRawZip(const std::string &path, const std::strin
                                        cfg::custom_charts::kMaximumRating)
                         .value_or(settings_.default_rating));
                 chart.rating_plus = JsonBool(JsonFind(it->second, "ratingPlus"), false);
+                chart.rating_class_alias = static_cast<int>(
+                    JsonBoundedInteger(JsonFind(it->second, "ratingClassAlias"),
+                                       cfg::custom_charts::kMinimumRatingClassAlias,
+                                       cfg::custom_charts::kMaximumRatingClassAlias)
+                        .value_or(0));
             }
             song.has_chart[slot] = true;
             if (!metadata_ok) {

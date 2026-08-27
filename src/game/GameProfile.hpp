@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 
@@ -16,7 +17,23 @@ enum class GameVersionId : uint8_t {
     k6140c,
     k6162c,
     k6168c,
+    k7000c,
 };
+
+// Layout selection at runtime. Every build through 6.16.8c shares one set of
+// note-family offsets; 7.0.0c shifts the derived tail, so consumers must ask
+// which row applies. Features install this right before arming hooks; until
+// then reads fall back to the shared legacy row.
+inline constinit std::atomic<GameVersionId> runtime_layout_version{GameVersionId::kUnknown};
+
+inline void SetRuntimeLayoutVersion(GameVersionId version) {
+    runtime_layout_version.store(version, std::memory_order_relaxed);
+}
+
+inline GameVersionId GetRuntimeLayoutVersion() {
+    const GameVersionId version = runtime_layout_version.load(std::memory_order_relaxed);
+    return version == GameVersionId::kUnknown ? GameVersionId::k61211c : version;
+}
 
 struct VersionProbeOffsets {
     uintptr_t app_version_string = 0;
@@ -53,7 +70,8 @@ struct SslPinsOffsets {
 struct CustomChartsOffsets {
     uintptr_t songlist_parser = 0;
     // Return address immediately after the validated AAssetManager_open BL
-    // that reads songs/songlist (6.16.2c: 0x142CFB0, 6.16.8c: 0x1709D98).
+    // that reads songs/songlist (6.16.2c: 0x142CFB0, 6.16.8c: 0x1709D98,
+    // 7.0.0c: 0x105F0F8).
     // This is deliberately an exact caller match; the nearby integrity/preload
     // caller is official.
     uintptr_t songlist_asset_loader_caller = 0;
@@ -71,6 +89,12 @@ struct CustomChartsOffsets {
     // Encoded BL at songlist_asset_loader_caller - 4; the immediate differs
     // per build because it targets the PLT stub of that binary.
     uint32_t expected_songlist_loader_call = 0;
+    // IDA sub_E6F768: bool getter over the play-context byte +0x110. Only the
+    // retired April-Fools dynamix_conflict chart raises that byte, so parsed
+    // scenecontrol/timing commands stay dormant for every other chart. The
+    // module swaps this function for an always-true return while custom charts
+    // are installed; zero keeps older profiles untouched.
+    uintptr_t scenecontrol_gate_getter = 0;
 };
 
 struct FeatureCapabilities {
@@ -90,7 +114,7 @@ struct GameProfile {
     FeatureCapabilities capabilities{};
 };
 
-inline constexpr std::array<GameProfile, 5> kSupportedGameProfiles = {{
+inline constexpr std::array<GameProfile, 6> kSupportedGameProfiles = {{
     {
         .id = GameVersionId::k61211c,
         .version_name = "6.12.11c",
@@ -270,6 +294,51 @@ inline constexpr std::array<GameProfile, 5> kSupportedGameProfiles = {{
             .song_registry_global = 0x1A9DA58,
             .find_song_by_id = 0xC05E74,
             .expected_songlist_loader_call = 0x94089DEB,
+        },
+        .capabilities = {.autoplay = true, .network = true, .custom_charts = true},
+    },
+    {
+        .id = GameVersionId::k7000c,
+        .version_name = "7.0.0c",
+        .version_probe = {
+            .app_version_string = 0x1BAF300,
+        },
+        .autoplay = {
+            .gameplay_process_logic_notes = 0xF21224,
+            .gameplay_try_tap_judgement_for_touch = 0x109F144,
+            .score_state_apply_judgement = 0x9D5500,
+            .score_state_apply_miss = 0xE03F70,
+            .show_judgement_effect_at_note = 0xB804E4,
+            .note_effect_on_miss = 0x7A5484,
+            .note_effect_on_judgement = 0xD0B0F4,
+            .logic_color_accepts_touch = 0x18DBD7C,
+            .patch_process_logic_notes_add64_a = 0xF2170C,
+            .patch_process_logic_notes_add64_b = 0xF217C4,
+            .patch_process_logic_notes_addc8 = 0xF21814,
+            .typeinfo_logic_hold_note = 0x1A54038,
+            .typeinfo_logic_arc_note = 0x1B08D30,
+        },
+        .network = {
+            .httpclient_process_request = 0x1459B6C,
+            .curl_easy_setopt = 0xD8B4C4,
+        },
+        .ssl_pins = {},
+        .custom_charts = {
+            .songlist_parser = 0xCCE050,
+            .songlist_asset_loader_caller = 0x105F0F8,
+            .asset_bundle_loader = 0x928590,
+            .songlist_digest_size_guard = 0x9289BC,
+            .songlist_digest_compare_guard = 0x9289D8,
+            .songlist_difficulty_filter = 0xB6E964,
+            .difficulty_availability = 0x195AE9C,
+            .song_unlock_mask_check = 0x1399B04,
+            .content_availability = 0x18D8DE0,
+            .play_launcher = 0xA0C430,
+            .chart_path = 0xF4D3C8,
+            .song_registry_global = 0x1BC28F0,
+            .find_song_by_id = 0x7AF94C,
+            .expected_songlist_loader_call = 0x94275287,
+            .scenecontrol_gate_getter = 0xE6F768,
         },
         .capabilities = {.autoplay = true, .network = true, .custom_charts = true},
     },

@@ -47,6 +47,7 @@ std::unordered_map<AAssetDir *, std::unique_ptr<VirtualDirectory>> g_directories
 uintptr_t g_lib_base = 0;
 cfg::CustomChartsOffsets g_offsets{};
 mem::PatchTransaction g_songlist_patch_transaction;
+mem::PatchTransaction g_scenecontrol_patch_transaction;
 
 using OpenFn = AAsset *(*)(AAssetManager *, const char *, int);
 using OpenDirFn = AAssetDir *(*)(AAssetManager *, const char *);
@@ -178,6 +179,57 @@ bool RestoreSonglistDigestGuards() {
     }
     const bool restored = g_songlist_patch_transaction.Rollback().has_value();
     ARC_LOGI("Songlist digest rollback %s",
+             restored ? "OK" : "FAILED");
+    return restored;
+}
+
+// Forces the play-context "dynamic event chart" flag getter to return true so
+// scenecontrol/timing commands drive camera/track effects for imported charts
+// (see kExpectedScenecontrolGateGetter). Best-effort: a failure only leaves the
+// effects dormant; older profiles without the offset skip the patch entirely.
+bool PatchScenecontrolGate() {
+    if (!g_offsets.scenecontrol_gate_getter) {
+        ARC_LOGI("No scenecontrol gate offset for this profile");
+        return true;
+    }
+    const uintptr_t getter = g_lib_base + g_offsets.scenecontrol_gate_getter;
+    constexpr size_t kGateBytes = cfg::custom_charts::kExpectedScenecontrolGateGetter.size();
+    if (!mem::ProcMaps::IsReadable(getter, kGateBytes)) {
+        ARC_LOGE("Scenecontrol gate not readable at %p", reinterpret_cast<void *>(getter));
+        return false;
+    }
+    std::array<std::byte, kGateBytes> expected{};
+    std::array<std::byte, kGateBytes> replacement{};
+    std::memcpy(expected.data(),
+                cfg::custom_charts::kExpectedScenecontrolGateGetter.data(),
+                expected.size());
+    std::memcpy(replacement.data(),
+                cfg::custom_charts::kScenecontrolGateAlwaysTrue.data(),
+                replacement.size());
+    const std::array<mem::PatchDescriptor, 1> patches = {{
+        {getter,
+         std::span<const std::byte>(expected),
+         std::span<const std::byte>(replacement)},
+    }};
+    if (!g_scenecontrol_patch_transaction.Apply(patches)) {
+        if (g_scenecontrol_patch_transaction.IsDegraded() &&
+            !g_scenecontrol_patch_transaction.Rollback()) {
+            ARC_LOGE("Degraded scenecontrol rollback failed");
+        }
+        ARC_LOGE("Scenecontrol gate transaction failed");
+        return false;
+    }
+    ARC_LOGI("Scenecontrol gate patched");
+    return true;
+}
+
+bool RestoreScenecontrolGate() {
+    if (g_scenecontrol_patch_transaction.State() == mem::PatchState::Ready ||
+        g_scenecontrol_patch_transaction.State() == mem::PatchState::RolledBack) {
+        return true;
+    }
+    const bool restored = g_scenecontrol_patch_transaction.Rollback().has_value();
+    ARC_LOGI("Scenecontrol gate rollback %s",
              restored ? "OK" : "FAILED");
     return restored;
 }
@@ -756,6 +808,7 @@ bool AssetVirtualizer::Install(const cfg::GameProfile &profile) {
     g_lib_base = lib_base_;
     offsets_ = profile.custom_charts;
     g_offsets = offsets_;
+    cfg::SetRuntimeLayoutVersion(profile.id);
     if (!ValidateInstallTargets()) return false;
 
     dev_t dev = 0;
@@ -880,9 +933,13 @@ bool AssetVirtualizer::Install(const cfg::GameProfile &profile) {
         RestoreAssetHooks(dev, inode);
         return false;
     }
+    if (!PatchScenecontrolGate()) {
+        ARC_LOGI("Continuing without scenecontrol/timing effects");
+    }
     if (!hook_manager.CommitInlineHook(
             std::span<HookManager::InlineHookRegistration>(registrations))) {
         RestoreSonglistDigestGuards();
+        RestoreScenecontrolGate();
         RestoreAssetHooks(dev, inode);
         return false;
     }

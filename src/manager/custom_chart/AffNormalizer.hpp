@@ -28,7 +28,8 @@ struct Result {
     std::vector<Diagnostic> diagnostics;
 };
 
-// Rewrites ArcCreate AFF into the official 6.16.2 token grammar.
+// Rewrites ArcCreate AFF into the official token grammar (verified against
+// official 6.x and 7.0 charts).
 Result Normalize(std::string_view text,
                  std::string_view source_name = {},
                  const Source *files = nullptr);

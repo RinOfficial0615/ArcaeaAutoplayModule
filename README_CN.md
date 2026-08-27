@@ -2,7 +2,7 @@
 
 Language: [English](README.md) | 简体中文
 
-Arcaea 辅助模块，提供自动打歌、网络控制与本地自定义谱面加载。支持 6.12.11c / 6.13.2f / 6.14.0c / 6.16.2c / 6.16.8c（arm64）；自定义谱面从 6.16.2c 开始支持。
+Arcaea 辅助模块，提供自动打歌、网络控制与本地自定义谱面加载。支持 6.12.11c / 6.13.2f / 6.14.0c / 6.16.2c / 6.16.8c / 7.0.0c（arm64）；自定义谱面从 6.16.2c 开始支持。
 
 提供 Zygisk 和 JNI 两种注入方式：你可以把编译出的 so 塞进 apk 改 dex 加载，也可以直接装 Zygisk 模块。
 
@@ -10,7 +10,7 @@ Arcaea 辅助模块，提供自动打歌、网络控制与本地自定义谱面�
 
 - Android NDK r29+（构建脚本自动选最新版；r28 及以下会报错）
 - 已启用 Zygisk 的设备
-- Arcaea 6.12.11c、6.13.2f、6.14.0c、6.16.2c 或 6.16.8c
+- Arcaea 6.12.11c、6.13.2f、6.14.0c、6.16.2c、6.16.8c 或 7.0.0c
 
 ## 构建
 
@@ -68,4 +68,4 @@ git submodule update --init --recursive
 
 - 项目结构：`docs/project-structure.md`
 - 版本支持：`docs/version-support.md`
-- 偏移参考：`docs/offsets/6.12.11c-offsets.md`、`docs/offsets/6.16.2c-offsets.md`、`docs/offsets/6.16.8c-offsets.md`
+- 偏移参考：`docs/offsets/6.12.11c-offsets.md`、`docs/offsets/6.16.2c-offsets.md`、`docs/offsets/6.16.8c-offsets.md`、`docs/offsets/7.0.0c-offsets_CN.md`

@@ -91,6 +91,44 @@ PROFILES = {
             0x77AE48: 0x350012C0,
         },
     },
+    "7.0.0c": {
+        "so": ROOT.parent / "7.0.0c" / "libcocos2dcpp.so",
+        "sha256": "8526a8dad5110e5db3a103e3cc3a8acd33d8faa57d0a53ae6628ba4440948837",
+        "expected": {
+            0xF21224: "e80f19fcfd7b01a9fc6f02a9fa6703a9",
+            0x109F144: "ff4306d1ea8b00fde923126dfd7b13a9",
+            # 7.0 reuses the 6.16.2c-style ScoreState prologues.
+            0x9D5500: "ff8302d1fd7b04a9fb2b00f9fa6706a9",
+            0xE03F70: "ff0302d1fd7b04a9f85f05a9f65706a9",
+            0xB804E4: "ff8302d1e81b00fdfd7b04a9fc6f05a9",
+            0x7A5484: "ffc301d1e81b00fdfd7b04a9f65705a9",
+            0xD0B0F4: "ff0302d1e81b00fdfd7b04a9f85f05a9",
+            0x18DBD7C: "ffc300d1fd7b01a9f44f02a9fd430091",
+            0x1459B6C: "ff8301d1fd7b02a9f71b00f9f65704a9",
+            0xD8B4C4: "ff0304d1fd7b0fa9fdc30391a20f39a9",
+            # Songlist data loader: AAssetManager_open BL at 0x105F0F4, whose
+            # return address is the exact caller 0x105F0F8.
+            0x105F0F4: "87522794f40300aae00700b4e00314aa",
+            0xB6E964: "ff8303d1fd7b08a9fc6f09a9fa670aa9",
+            0x195AE9C: "ff8301d1fd7b02a9f85f03a9f65704a9",
+            0x1399B04: "ffc301d1fd7b04a9f65705a9f44f06a9",
+            0x18D8DE0: "fd7bbda9f65701a9f44f02a9fd030091",
+            0xA0C430: "fd7bbaa9fc6f01a9fa6702a9f85f03a9",
+            0xF4D3C8: "ff8303d1fd7b0ba9f6570ca9f44f0da9",
+            0x7AF94C: "fd7bbea9f30b00f9fd030091f30300aa",
+            # April-Fools dynamix_conflict flag getter sub_E6F768. Only the
+            # module swaps these 8 bytes for MOV W0,#1;RET while custom charts
+            # are installed; consumers consult +0x110 through this one function.
+            0xE6F768: "00404439c0035fd6",
+        },
+        "patches": {
+            0xF2170C: 0x11019148,
+            0xF217C4: 0x11019148,
+            0xF21814: 0x11032148,
+            0x9289BC: 0x540013A1,
+            0x9289D8: 0x350012C0,
+        },
+    },
 }
 
 

@@ -366,6 +366,7 @@ subprocess.run(
         str(MAGIC_ENUM_INCLUDE),
         str(ROOT / "tests" / "aff_normalizer_host_test.cpp"),
         str(ROOT / "src" / "manager" / "custom_chart" / "AffNormalizer.cpp"),
+        str(ROOT / "src" / "manager" / "custom_chart" / "AffOfficialParser.cpp"),
         "-o",
         str(aff_normalizer_exe),
     ],
@@ -403,6 +404,37 @@ subprocess.run(
 )
 subprocess.run([str(official_parser_exe)], check=True, cwd=ROOT)
 print("validated official 6.16.2c AFF token grammar")
+
+songlist_snapshot_exe = BUILD / "songlist_snapshot_host_test.exe"
+subprocess.run(
+    [
+        CXX,
+        *HOST_LINK_ARGS,
+        "-std=c++23",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-static",
+        "-static-libgcc",
+        "-static-libstdc++",
+        "-I",
+        str(ROOT / "src"),
+        "-I",
+        str(MAGIC_ENUM_INCLUDE),
+        "-I",
+        str(ROOT / "third_party" / "json" / "include"),
+        str(ROOT / "tests" / "songlist_snapshot_host_test.cpp"),
+        str(ROOT / "src" / "manager" / "custom_chart" / "CustomChartSnapshot.cpp"),
+        str(ROOT / "src" / "manager" / "custom_chart" / "CustomChartAssetIndex.cpp"),
+        "-o",
+        str(songlist_snapshot_exe),
+    ],
+    check=True,
+    cwd=ROOT,
+)
+subprocess.run([str(songlist_snapshot_exe)], check=True, cwd=ROOT)
+print("validated import snapshot songs JSON and official list merge alias echo")
 
 image_raster_exe = BUILD / "image_raster_host_test.exe"
 subprocess.run(

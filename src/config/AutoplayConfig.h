@@ -10,7 +10,9 @@ namespace arc_helper::cfg::autoplay {
 
 // ---------------------------------------------------------------------------
 //  Offsets computed from `layouts::*` mirror structs (see `GameStructs.hpp`).
-//  All consumed fields are verified identical through 6.16.2c.
+//  All consumed fields are verified identical through 6.16.8c.
+//  7.0.0c shifts the note-family derived tail (see the Arc*/Hold*/Runtime
+//  selectors below); base-zone offsets stay shared.
 // ---------------------------------------------------------------------------
 constexpr GameVersionId kLayoutVer = GameVersionId::k61211c;
 
@@ -44,6 +46,48 @@ inline constexpr size_t kTouch_ndc_x_f32_off        = offsetof(layouts::TouchLik
 inline constexpr size_t kTouch_ndc_y_f32_off        = offsetof(layouts::TouchLike<kLayoutVer>, ndcY);
 inline constexpr size_t kTouch_uid_i32_off          = offsetof(layouts::TouchLike<kLayoutVer>, touchUid);
 inline constexpr size_t kTouch_timestamp_i32_off    = offsetof(layouts::TouchLike<kLayoutVer>, timestamp);
+
+// 7.0.0c inserts one member into the note-family derived area; everything the
+// game stores below those offsets keeps its address, everything after shifts
+// by +8 (verified via matched instruction pairs in both builds).
+inline constexpr size_t k7Arc_isVoid_i32_off           = 0xA4;
+inline constexpr size_t k7Arc_activeNow_u8_off         = 0xD0;
+inline constexpr size_t k7Note_runtime_x_f32_off       = 0xD4;
+inline constexpr size_t k7Note_runtime_y_f32_off       = 0xD8;
+inline constexpr size_t k7Hold_headActivated_u8_off    = 0xA8;
+
+static_assert(k7Arc_isVoid_i32_off ==
+              offsetof(layouts::ArcNote<GameVersionId::k7000c>, isVoid));
+static_assert(k7Arc_activeNow_u8_off ==
+              offsetof(layouts::ArcNote<GameVersionId::k7000c>, activeNow));
+static_assert(k7Note_runtime_x_f32_off ==
+              offsetof(layouts::NoteRuntimePos<GameVersionId::k7000c>, runtimeX));
+static_assert(k7Note_runtime_y_f32_off ==
+              offsetof(layouts::NoteRuntimePos<GameVersionId::k7000c>, runtimeY));
+static_assert(k7Hold_headActivated_u8_off ==
+              offsetof(layouts::HoldNote<GameVersionId::k7000c>, headActivated));
+
+// Version-aware accessors for the shifted members. Callers pass the resolved
+// profile id so that every read tracks the running build.
+inline constexpr size_t ArcIsVoidOffset(GameVersionId version) {
+    return version == GameVersionId::k7000c ? k7Arc_isVoid_i32_off : kArc_isVoid_i32_off;
+}
+
+inline constexpr size_t ArcActiveNowOffset(GameVersionId version) {
+    return version == GameVersionId::k7000c ? k7Arc_activeNow_u8_off : kArc_activeNow_u8_off;
+}
+
+inline constexpr size_t NoteRuntimeXOffset(GameVersionId version) {
+    return version == GameVersionId::k7000c ? k7Note_runtime_x_f32_off : kNote_runtime_x_f32_off;
+}
+
+inline constexpr size_t NoteRuntimeYOffset(GameVersionId version) {
+    return version == GameVersionId::k7000c ? k7Note_runtime_y_f32_off : kNote_runtime_y_f32_off;
+}
+
+inline constexpr size_t HoldHeadActivatedOffset(GameVersionId version) {
+    return version == GameVersionId::k7000c ? k7Hold_headActivated_u8_off : kHold_headActivated_u8_off;
+}
 
 // vtable offsets (byte offsets from vptr).
 inline constexpr size_t kLogicNote_vcall_canApplyJudgement_off = 0x20;
@@ -143,15 +187,17 @@ inline constexpr std::array<uint8_t, 16> kSig_LogicColor_acceptsTouch = {
 };
 
 inline constexpr const std::array<uint8_t, 16> &ScoreStateApplyJudgementSignature(GameVersionId version) {
-    return version == GameVersionId::k6162c || version == GameVersionId::k6168c
-               ? kSig_6162c_ScoreState_applyJudgement
-               : kSig_ScoreState_applyJudgement;
+    return version == GameVersionId::k61211c || version == GameVersionId::k6132f ||
+                   version == GameVersionId::k6140c
+               ? kSig_ScoreState_applyJudgement
+               : kSig_6162c_ScoreState_applyJudgement;
 }
 
 inline constexpr const std::array<uint8_t, 16> &ScoreStateApplyMissSignature(GameVersionId version) {
-    return version == GameVersionId::k6162c || version == GameVersionId::k6168c
-               ? kSig_6162c_ScoreState_applyMiss
-               : kSig_ScoreState_applyMiss;
+    return version == GameVersionId::k61211c || version == GameVersionId::k6132f ||
+                   version == GameVersionId::k6140c
+               ? kSig_ScoreState_applyMiss
+               : kSig_6162c_ScoreState_applyMiss;
 }
 
 } // namespace arc_helper::cfg::autoplay

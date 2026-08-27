@@ -49,6 +49,29 @@ int main() {
     }
 
     {
+        // Official 7.0 charts (cataclysmcry/deinosphainein) exercise arc color
+        // index 3 (gold guide), arbitrary chart-specific group labels and the
+        // enwiden* scenecontrol verbs. The token grammar is unchanged from
+        // 6.x: everything must validate without parser adjustments.
+        const auto check = CheckOfficial(
+            "AudioOffset:0\n"
+            "-\n"
+            "timing(0,180.00,3.00);\n"
+            "scenecontrol(149052,enwidencamera,5053.00,1);\n"
+            "scenecontrol(149052,enwidenlanes,5053.00,1);\n"
+            "arc(135999,136999,0.00,0.00,s,1.00,1.00,3,none,true)[arctap(135999)];\n"
+            "arc(135999,136499,1.00,0.00,so,1.00,1.00,3,none,true,2.00);\n"
+            "timinggroup(){\n"
+            "(97263,1);\n"
+            "};\n"
+            "timinggroup(tracecoleeee00){\n"
+            "scenecontrol(1263,hidegroup,0.00,0);\n"
+            "(97282,2);\n"
+            "};\n");
+        assert(check.ok);
+    }
+
+    {
         const auto check = CheckOfficial(
             "AudioOffset:0\n-\narc(0,10,0.00,1.00,s,0.00,0.00,0,none,true)[arctap(5,1.50)];\n");
         assert(!check.ok);

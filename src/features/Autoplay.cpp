@@ -22,6 +22,7 @@ void Autoplay::Install(const cfg::GameProfile &profile) {
         ARC_LOGE("Capability unavailable for %s", profile.version_name);
         return;
     }
+    cfg::SetRuntimeLayoutVersion(profile.id);
     auto &hook_manager = HookManager::Instance();
     if (!hook_manager.EnsureReady()) return;
     hook_manager_ = &hook_manager;

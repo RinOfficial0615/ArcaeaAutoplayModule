@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Worked example / regression spec: the complete verified 6.16.8c -> 7.0.0c",
+    "function mapping consumed by ArcHelperModule's profiles.",
+    "'new' pins every accepted candidate so `locate` self-checks them",
+    "(any drift fails loudly) and `diff` can compare the pairs.",
+    "When adapting a new version, copy this file, keep only name/old/size,",
+    "and drop the 'new' entries before searching.",
+    "'expect_bytes' (IDA-copied instruction words at the pinned address)",
+    "confirms pins whose bodies diverged too much for consensus voting."
+  ],
+  "functions": [
+    { "name": "process_logic_notes",           "old": "0xD7A8D4",  "size": "0x6E0",   "new": "0xF21224"  },
+    { "name": "try_tap_judgement_for_touch",   "old": "0xD4F330",  "size": "0x8E4",   "new": "0x109F144" },
+    { "name": "score_state_apply_judgement",   "old": "0xDA6D04",  "size": "0x380",   "new": "0x9D5500"  },
+    { "name": "score_state_apply_miss",        "old": "0x979CD0",  "size": "0x170",   "new": "0xE03F70"  },
+    { "name": "show_judgement_effect_at_note", "old": "0x1401F98", "size": "0x5BC",   "new": "0xB804E4",
+      "expect_bytes": "ff8302d1e81b00fdfd7b04a9fc6f05a9" },
+    { "name": "note_effect_on_miss",           "old": "0xB79F1C",  "size": "0x180",   "new": "0x7A5484"  },
+    { "name": "note_effect_on_judgement",      "old": "0xB4D628",  "size": "0x118",   "new": "0xD0B0F4"  },
+    { "name": "logic_color_accepts_touch",     "old": "0x11F1AC4", "size": "0x180",   "new": "0x18DBD7C" },
+    { "name": "httpclient_process_request",    "old": "0xFA5D40",  "size": "0x4B8",   "new": "0x1459B6C" },
+    { "name": "curl_easy_setopt_wrapper",      "old": "0x750734",  "size": "0x80",    "new": "0xD8B4C4"  },
+    { "name": "songlist_parser_body",          "old": "0xDC9CBC",  "size": "0x77E8",  "new": "0xCCE050",
+      "expect_bytes": "e923b96dfd7b01a9fc6f02a9fa6703a9" },
+    { "name": "asset_bundle_loader",           "old": "0x77AA00",  "size": "0x9CC",   "new": "0x928590"  },
+    { "name": "songlist_difficulty_filter",    "old": "0xD3AF00",  "size": "0x354",   "new": "0xB6E964"  },
+    { "name": "difficulty_availability",       "old": "0xE8792C",  "size": "0x200",   "new": "0x195AE9C" },
+    { "name": "song_unlock_mask_check",        "old": "0x1068020", "size": "0x1AC",   "new": "0x1399B04" },
+    { "name": "content_availability",          "old": "0xF64A90",  "size": "0x64",    "new": "0x18D8DE0" },
+    { "name": "play_launcher",                 "old": "0xA1F1A0",  "size": "0x288C",  "new": "0xA0C430"  },
+    { "name": "chart_path_builder",            "old": "0xDA71E8",  "size": "0x3B0",   "new": "0xF4D3C8"  },
+    { "name": "find_song_by_id",               "old": "0xC05E74",  "size": "0x3C",    "new": "0x7AF94C"  }
+  ]
+}

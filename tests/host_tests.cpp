@@ -58,6 +58,33 @@ int main(int argc, char **argv) {
                    .data() == cfg::autoplay::kSig_6162c_ScoreState_applyJudgement.data());
         assert(cfg::autoplay::ScoreStateApplyMissSignature(cfg::GameVersionId::k6168c).data() ==
                cfg::autoplay::kSig_6162c_ScoreState_applyMiss.data());
+        assert(cfg::autoplay::ScoreStateApplyJudgementSignature(cfg::GameVersionId::k7000c)
+                   .data() == cfg::autoplay::kSig_6162c_ScoreState_applyJudgement.data());
+        assert(cfg::autoplay::ScoreStateApplyMissSignature(cfg::GameVersionId::k7000c).data() ==
+               cfg::autoplay::kSig_6162c_ScoreState_applyMiss.data());
+        // 7.0.0c shifts only the note-family derived tail.
+        assert(cfg::autoplay::ArcIsVoidOffset(cfg::GameVersionId::k6168c) == 0x9C);
+        assert(cfg::autoplay::ArcIsVoidOffset(cfg::GameVersionId::k7000c) == 0xA4);
+        assert(cfg::autoplay::ArcActiveNowOffset(cfg::GameVersionId::k7000c) == 0xD0);
+        assert(cfg::autoplay::NoteRuntimeXOffset(cfg::GameVersionId::k7000c) == 0xD4);
+        assert(cfg::autoplay::NoteRuntimeYOffset(cfg::GameVersionId::k7000c) == 0xD8);
+        assert(cfg::autoplay::HoldHeadActivatedOffset(cfg::GameVersionId::k7000c) == 0xA8);
+        assert(cfg::FindGameProfileByVersionString("7.0.0c") != nullptr);
+        const auto *profile_7000 = cfg::FindGameProfileByVersionString("7.0.0c");
+        assert(profile_7000 != nullptr);
+        assert(std::string_view(profile_7000->version_name) == "7.0.0c");
+        assert(profile_7000->capabilities.autoplay && profile_7000->capabilities.network &&
+               profile_7000->capabilities.custom_charts);
+        assert(profile_7000->custom_charts.expected_songlist_loader_call != 0);
+        // Scenecontrol gate override ships only for 7.0.0c; older profiles
+        // keep the zero offset and the install skips that patch.
+        assert(profile_7000->custom_charts.scenecontrol_gate_getter == 0xE6F768);
+        assert(profile_6168->custom_charts.scenecontrol_gate_getter == 0);
+        assert(profile_616->custom_charts.scenecontrol_gate_getter == 0);
+        assert(cfg::custom_charts::kExpectedScenecontrolGateGetter.size() ==
+               cfg::custom_charts::kScenecontrolGateAlwaysTrue.size());
+        assert(cfg::custom_charts::kExpectedScenecontrolGateGetter.front() == 0x00 &&
+               cfg::custom_charts::kExpectedScenecontrolGateGetter[2] == 0x44);
         assert(cfg::FindGameProfileByVersionString("6.12.11c") != nullptr);
         assert(cfg::FindGameProfileByVersionString("6.13.2f") != nullptr);
         assert(cfg::FindGameProfileByVersionString("6.14.0c") != nullptr);
@@ -73,6 +100,8 @@ int main(int argc, char **argv) {
                "songs/ah_lostrequi_422e6e2f/3.aff");
         assert(cfg::custom_charts::LocalChartAssetPath("ah_demo", 2) == "songs/ah_demo/2.aff");
         assert(cfg::custom_charts::kDifficultyCount == 5);
+        // Official songlist side domain: 0..4 (side 4 first used in 7.0.0c).
+        assert(cfg::custom_charts::kMaximumSide == 4);
         assert(cfg::custom_charts::kDifficultyPointersOffset == 0x228);
         assert(cfg::custom_charts::kDifficultyPresenceOffset == 0x250);
         assert(cfg::custom_charts::kDifficultyLockOffset == 0xF0);

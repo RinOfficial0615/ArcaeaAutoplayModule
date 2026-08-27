@@ -45,6 +45,12 @@ std::string ImportSnapshot::SongsJson() const {
                                    : cfg::custom_charts::kPlaceholderRating},
             };
             if (present && song.charts[slot].rating_plus) difficulty["ratingPlus"] = true;
+            // The engine derives the runtime slot from ratingClass alone
+            // (`sub_1194380`); ratingClassAlias only restyles the entry, so it
+            // is emitted solely when metadata carried one (Inscribed).
+            if (present && song.charts[slot].rating_class_alias > 0) {
+                difficulty["ratingClassAlias"] = song.charts[slot].rating_class_alias;
+            }
             item["difficulties"].push_back(std::move(difficulty));
         }
         // The 6.16.2c parser treats Beyond as locally locked unless this

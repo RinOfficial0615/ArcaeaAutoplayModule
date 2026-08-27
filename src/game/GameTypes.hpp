@@ -113,18 +113,28 @@ class LogicHoldNote final : public LogicNote {
 public:
     using LogicNote::LogicNote;
 
-    void SetHeadActivated(uint8_t v) const { Write<uint8_t>(cfg::autoplay::kHold_headActivated_u8_off, v); }
+    void SetHeadActivated(uint8_t v) const {
+        Write<uint8_t>(cfg::autoplay::HoldHeadActivatedOffset(cfg::GetRuntimeLayoutVersion()), v);
+    }
 };
 
 class LogicArcNote final : public LogicNote {
 public:
     using LogicNote::LogicNote;
 
-    bool IsVoid() const { return Read<int32_t>(cfg::autoplay::kArc_isVoid_i32_off) != 0; }
-    bool ActiveNow() const { return Read<uint8_t>(cfg::autoplay::kArc_activeNow_u8_off) != 0; }
+    bool IsVoid() const {
+        return Read<int32_t>(cfg::autoplay::ArcIsVoidOffset(cfg::GetRuntimeLayoutVersion())) != 0;
+    }
+    bool ActiveNow() const {
+        return Read<uint8_t>(cfg::autoplay::ArcActiveNowOffset(cfg::GetRuntimeLayoutVersion())) != 0;
+    }
 
-    float RuntimeX() const { return Read<float>(cfg::autoplay::kNote_runtime_x_f32_off); }
-    float RuntimeY() const { return Read<float>(cfg::autoplay::kNote_runtime_y_f32_off); }
+    float RuntimeX() const {
+        return Read<float>(cfg::autoplay::NoteRuntimeXOffset(cfg::GetRuntimeLayoutVersion()));
+    }
+    float RuntimeY() const {
+        return Read<float>(cfg::autoplay::NoteRuntimeYOffset(cfg::GetRuntimeLayoutVersion()));
+    }
 };
 
 class TouchLike final : public Object {

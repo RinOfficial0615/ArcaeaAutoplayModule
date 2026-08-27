@@ -3,6 +3,7 @@
 #include <unordered_map>
 
 #include "manager/custom_chart/AffNormalizer.hpp"
+#include "manager/custom_chart/AffOfficialParser.hpp"
 
 namespace {
 
@@ -66,11 +67,10 @@ int main() {
         assert(Contains(result.text, "scenecontrol(30,trackdisplay,1000.00,0);"));
         assert(Contains(result.text, "scenecontrol(40,redline,0.00,1);"));
         assert(!Contains(result.text, "groupalpha"));
-        assert(Contains(result.text, "timinggroup(noinput_fadingholds){"));
+        assert(Contains(result.text, "timinggroup(noinput_noclip_fadingholds){"));
         assert(Contains(result.text, "timinggroup(angley900){"));
         assert(Contains(result.text, "timinggroup(noinput_anglex1800){"));
         assert(!Contains(result.text, "name="));
-        assert(!Contains(result.text, "noclip"));
         assert(HasStatus(result, "DROPPED_COMMAND"));
         assert(HasStatus(result, "REWRITTEN"));
     }
@@ -156,6 +156,35 @@ int main() {
         assert(!Contains(result.text, "arc_wav"));
         assert(!Contains(result.text, "metal"));
         assert(HasStatus(result, "REWRITTEN"));
+    }
+    {
+        // 7.0 official charts: gold guide arcs (arc color index 3), arbitrary
+        // chart-specific timing-group labels and the enwiden* scenecontrol
+        // verbs are all official tokens now and must survive verbatim.
+        const auto result = Normalize(
+            "AudioOffset:0\n-\n"
+            "timing(0,180.00,3.00);\n"
+            "scenecontrol(149052,enwidencamera,5053.00,1);\n"
+            "scenecontrol(149052,enwidenlanes,5053.00,1);\n"
+            "arc(135999,136999,0.00,0.00,s,1.00,1.00,3,none,true)[arctap(135999)];\n"
+            "timinggroup(tracecoleeee00){\n"
+            "(97263,1);\n"
+            "};\n");
+        assert(Contains(result.text, "scenecontrol(149052,enwidencamera,5053.00,1);"));
+        assert(Contains(result.text, "scenecontrol(149052,enwidenlanes,5053.00,1);"));
+        assert(Contains(result.text,
+                        "arc(135999,136999,0.00,0.00,s,1.00,1.00,3,none,true)[arctap(135999)];"));
+        assert(Contains(result.text, "timinggroup(tracecoleeee00){"));
+        assert(arc_helper::aff::CheckOfficial(result.text).ok);
+    }
+
+    {
+        // Labels reserved by the AFF lexer cannot be emitted as idents; they
+        // stay dropped like the ArcCreate-only properties.
+        const auto result = Normalize(
+            "AudioOffset:0\n-\ntiminggroup(true){\n(0,1);\n};\n");
+        assert(!Contains(result.text, "true"));
+        assert(HasStatus(result, "DROPPED_COMMAND"));
     }
     return 0;
 }

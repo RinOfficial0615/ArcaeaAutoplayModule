@@ -17,6 +17,10 @@ struct ImportedChart {
     std::string jacket_designer;
     int rating = 0;
     bool rating_plus = false;
+    // Display class echoed from songlist metadata (`ratingClassAlias`). The
+    // engine keeps the runtime slot from `ratingClass`; a nonzero value only
+    // re-styles it, e.g. slot 3 renders as Inscribed instead of Beyond.
+    int rating_class_alias = 0;
 };
 
 struct ImportedSong {

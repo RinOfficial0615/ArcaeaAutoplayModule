@@ -302,40 +302,32 @@ std::string BodyAfterHeader(std::string_view text) {
     return body;
 }
 
-bool OfficialAngleToken(std::string_view token) {
-    if (token.size() <= 6) return false;
-    const bool x = token.starts_with("anglex");
-    const bool y = token.starts_with("angley");
-    if (!x && !y) return false;
-    const std::string_view digits = token.substr(6);
-    if (digits.empty()) return false;
-    size_t i = 0;
-    if (digits[0] == '+' || digits[0] == '-') {
-        if (digits.size() == 1) return false;
-        i = 1;
-    }
-    for (; i < digits.size(); ++i) {
-        if (digits[i] < '0' || digits[i] > '9') return false;
-    }
-    return true;
-}
-
-bool OfficialTimingGroupSegment(std::string_view token) {
-    return token == "noinput" || token == "fadingholds" || OfficialAngleToken(token);
-}
-
-bool OfficialTimingGroupIdent(std::string_view token) {
+// The official grammar takes a single identifier label after `timinggroup(`
+// and treats unrecognized labels as inert: the engine only matches
+// noinput/fadingholds and anglex<tenths>/angley<tenths> segments, so official
+// charts ship arbitrary chart-specific names (7.0 uses e.g.
+// tracecoleeee00). Labels stay verbatim instead of being dropped.
+bool TimingGroupLabel(std::string_view token) {
     if (token.empty()) return false;
-    size_t begin = 0;
-    while (begin <= token.size()) {
-        const size_t end = token.find('_', begin);
-        const std::string_view part = token.substr(
-            begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
-        if (part.empty() || !OfficialTimingGroupSegment(part)) return false;
-        if (end == std::string_view::npos) break;
-        begin = end + 1;
+    const unsigned char first = static_cast<unsigned char>(token.front());
+    if (!std::isalpha(first) && token.front() != '_') return false;
+    for (const char c : token) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (!std::isalnum(u) && c != '_') return false;
     }
     return true;
+}
+
+// Tokens reserved by the official lexer; a group label spelling one of these
+// would lex as a keyword, not an identifier, in both the game parser and
+// CheckOfficial.
+bool TimingGroupLabelKeyword(std::string_view token) {
+    constexpr std::array<std::string_view, 13> kKeywords = {
+        "timing",   "hold",   "arc",      "camera",   "scenecontrol",
+        "timinggroup", "flick", "arctap",  "at",       "true",
+        "false",    "rgb",    "designant",
+    };
+    return std::find(kKeywords.begin(), kKeywords.end(), token) != kKeywords.end();
 }
 
 std::string ClampIntTiming(const std::string &token, int line, std::string_view item,
@@ -474,17 +466,19 @@ std::string RewriteTimingGroup(Call call, int line, std::vector<Diagnostic> &dia
                     "ArcCreate timinggroup property");
             continue;
         }
-        if (OfficialTimingGroupIdent(prop)) {
-            if (prop.find('_') != std::string::npos) {
-                kept.clear();
-                kept.push_back(prop);
-                break;
-            }
-            if (std::find(kept.begin(), kept.end(), prop) == kept.end()) kept.push_back(prop);
+        if (!TimingGroupLabel(prop) || TimingGroupLabelKeyword(prop)) {
+            AddDiag(diagnostics, line, raw, "DROPPED_COMMAND",
+                    "ArcCreate timinggroup property");
             continue;
         }
-        AddDiag(diagnostics, line, raw, "DROPPED_COMMAND",
-                "ArcCreate timinggroup property");
+        // A label containing '_' is the final composed ident; single segments
+        // join with '_'.
+        if (prop.find('_') != std::string_view::npos) {
+            kept.clear();
+            kept.push_back(prop);
+            break;
+        }
+        if (std::find(kept.begin(), kept.end(), prop) == kept.end()) kept.push_back(prop);
     }
     std::string ident;
     for (const auto &part : kept) {

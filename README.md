@@ -2,7 +2,7 @@
 
 Language: English | [简体中文](README_CN.md)
 
-Arcaea helper module with autoplay, network controls, and local custom charts for 6.12.11c / 6.13.2f / 6.14.0c / 6.16.2c / 6.16.8c (arm64). Custom charts start at 6.16.2c.
+Arcaea helper module with autoplay, network controls, and local custom charts for 6.12.11c / 6.13.2f / 6.14.0c / 6.16.2c / 6.16.8c / 7.0.0c (arm64). Custom charts start at 6.16.2c.
 
 Provides both Zygisk and JNI entry points. You can embed the built .so into an APK and load it after `libcocos2dcpp.so`, or install it as a Zygisk module directly.
 
@@ -10,7 +10,7 @@ Provides both Zygisk and JNI entry points. You can embed the built .so into an A
 
 - Android NDK r29+ (the build script picks the newest; fails if ≤ r28)
 - Device with Zygisk enabled
-- Arcaea 6.12.11c, 6.13.2f, 6.14.0c, 6.16.2c, or 6.16.8c
+- Arcaea 6.12.11c, 6.13.2f, 6.14.0c, 6.16.2c, 6.16.8c, or 7.0.0c
 
 ## Build
 
@@ -69,4 +69,4 @@ This project was developed with AI assistance.
 
 - Project structure: `docs/project-structure.md`
 - Version support: `docs/version-support.md`
-- Offsets reference: `docs/offsets/6.12.11c-offsets.md`, `docs/offsets/6.16.2c-offsets.md`, `docs/offsets/6.16.8c-offsets.md`
+- Offsets reference: `docs/offsets/6.12.11c-offsets.md`, `docs/offsets/6.16.2c-offsets.md`, `docs/offsets/6.16.8c-offsets.md`, `docs/offsets/7.0.0c-offsets.md`

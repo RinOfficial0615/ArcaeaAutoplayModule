@@ -12,10 +12,14 @@
 namespace arc_helper::cfg::custom_charts {
 
 // Bounded parser values. User-facing defaults are owned by CustomCharts.
+// Song side values come straight from official songlist data, which has been
+// widening the enum: 2 since v4.0 (epilogue), 3 since v6.0 (lephon/designant),
+// and 4 first in 7.0.0c (konzetsu). Anything outside this domain falls back to
+// the configured default.
 inline constexpr double kMinimumBpm = 1.0;
 inline constexpr double kMaximumBpm = 10000.0;
 inline constexpr int kMinimumSide = 0;
-inline constexpr int kMaximumSide = 2;
+inline constexpr int kMaximumSide = 4;
 inline constexpr const char *kLightBackground = "base_light";
 inline constexpr const char *kConflictBackground = "base_conflict";
 inline constexpr double kDefaultChartConstant = -1.0;
@@ -24,6 +28,12 @@ inline constexpr int64_t kDefaultPreviewDurationMs = 30000;
 inline constexpr int kMinimumRating = 0;
 inline constexpr int kMaximumRating = 20;
 inline constexpr int kPlaceholderRating = -1;
+// Display-class echo (`ratingClassAlias`). Officially observed values are
+// 0/absent and 1 (Inscribed styling on a ratingClass-3 slot); the bound
+// mirrors the difficulty-class domain the game funnels through
+// `sub_1194380`.
+inline constexpr int kMinimumRatingClassAlias = 0;
+inline constexpr int kMaximumRatingClassAlias = 4;
 inline constexpr int kMinimumChartConstant = 0;
 inline constexpr int kMaxAffIncludeDepth = 8;
 
@@ -42,7 +52,9 @@ inline constexpr uint64_t kMaxVirtualAssetBytes = 128ull * 1024 * 1024;
 inline constexpr uint64_t kMaxOfficialAssetBytes = 64ull * 1024 * 1024;
 
 // Offsets computed from `layouts::*` mirror structs (see `GameStructs.hpp`).
-// Confirmed shared through 6.16.8c (game logic byte-identical to 6.16.2c).
+// Confirmed shared through 6.16.8c, and re-verified on 7.0.0c against the
+// matched chart-path/play-launcher bodies (`song+0x1C0`, slot table at
+// `song+0x228`, lock at diff+0xF0).
 constexpr GameVersionId kLayoutVer = GameVersionId::k6162c;
 inline constexpr size_t kDifficultyPointersOffset =
     offsetof(layouts::Song<kLayoutVer>, difficulty_pointers);
@@ -104,6 +116,25 @@ inline constexpr int kSongDate = 0;
 inline constexpr uint32_t kNopInstruction = 0xD503201F;
 inline constexpr uint32_t kExpectedDigestSizeGuard = 0x540013A1;
 inline constexpr uint32_t kExpectedDigestCompareGuard = 0x350012C0;
+
+// IDA sub_E6F768 (7.0.0c): `return play->flags_0x110 & 1`. The retired
+// April-Fools dynamix_conflict chart is the only setter of that byte, so
+// timing/scenecontrol commands parsed from every other chart stay dormant
+// (static lane geometry, no camera/track scheduling) in ~10 consumers,
+// including play setup, touch->lane mapping and tap judgement. Swapping the
+// getter for an always-true return arms those effects; with empty transform
+// schedules the consumers reduce to vanilla behavior, so official charts are
+// unaffected. Same gate family as the 4.x +0x108/264 fix documented by the
+// custom-chart community.
+inline constexpr std::array<uint8_t, 8> kExpectedScenecontrolGateGetter = {
+    0x00, 0x40, 0x44, 0x39,  // LDRB W0, [X0, #0x110]
+    0xC0, 0x03, 0x5F, 0xD6,  // RET
+};
+inline constexpr std::array<uint8_t, 8> kScenecontrolGateAlwaysTrue = {
+    0x20, 0x00, 0x80, 0x52,  // MOV W0, #1
+    0xC0, 0x03, 0x5F, 0xD6,  // RET
+};
+static_assert(kExpectedScenecontrolGateGetter.size() == kScenecontrolGateAlwaysTrue.size());
 
 inline constexpr std::array<uint8_t, 16> kSigSonglistDifficultyFilter = {
     0xFF, 0x83, 0x03, 0xD1, 0xFD, 0x7B, 0x08, 0xA9,
