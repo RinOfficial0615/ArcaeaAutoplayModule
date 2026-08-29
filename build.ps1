@@ -121,6 +121,12 @@ Options:
     --ndk-build-flags <flags>   Additional ndk-build flags
     --ndk-home <path>           Use a specific Android NDK path
     --help                      Show this help message
+
+Notes:
+    Switching between DEBUG and --rel discards build/obj automatically.
+    APP_CPPFLAGS uses -flto, so objects hold LLVM bitcode rather than machine
+    code and ndk-build cannot detect the optimisation change; reusing them
+    silently produces a half-optimised library. See docs/cpp/build-pitfalls.md.
 "@
 }
 
@@ -262,6 +268,32 @@ if (-not (Test-Path $NdkBuildCmd)) {
     exit 1
 }
 
+# ndk-build cannot see that the optimisation level changed. APP_CPPFLAGS carries
+# -flto, so every .o holds LLVM bitcode instead of machine code and the dependency
+# check only has timestamps to go on. Switching DEBUG -> RELEASE therefore reuses
+# -O0 objects and links a half-optimised .so: measured 1,512,696 bytes against
+# 1,261,784 for a clean build (+19.9%), with nothing anywhere reporting a problem.
+# Detect the mode flip here and drop the objects before ndk-build sees them.
+$ModeStampPath = Join-Path $PSScriptRoot "build/.last-build-mode"
+$ObjDir = Join-Path $PSScriptRoot "build/obj"
+$PreviousMode = $null
+if (Test-Path $ModeStampPath) {
+    $PreviousMode = (Get-Content -LiteralPath $ModeStampPath -ErrorAction SilentlyContinue |
+        Select-Object -First 1)
+    if ($PreviousMode) { $PreviousMode = $PreviousMode.Trim() }
+}
+if ($PreviousMode -and $PreviousMode -ne $BuildMode -and (Test-Path $ObjDir)) {
+    Write-LogInfo "Build mode changed $PreviousMode -> $BuildMode; discarding stale objects"
+    try {
+        Remove-Item -LiteralPath $ObjDir -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-LogError "Could not remove $ObjDir : $($_.Exception.Message)"
+        Write-LogError "Delete it manually and re-run. Building anyway would link"
+        Write-LogError "$PreviousMode objects into a $BuildMode library."
+        exit 1
+    }
+}
+
 $ArgList = @(
     "NDK_PROJECT_PATH=$PSScriptRoot",
     "APP_BUILD_SCRIPT=$PSScriptRoot\Android.mk",
@@ -290,6 +322,12 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "$([char]27)[33m===============================$([char]27)[0m" -ForegroundColor Yellow
     exit 1
 }
+
+# Stamped as soon as the objects are known-good, not at the very end: the cleanup
+# of build/module_tmp is the last step and can fail for reasons unrelated to the
+# build (locked files, permission), which would otherwise leave the stamp missing
+# and defeat the mode-flip check above on the next run.
+Set-Content -LiteralPath $ModeStampPath -Value $BuildMode
 
 if ($BuildMode -eq "RELEASE") {
     Write-LogInfo "Stripping libraries for release"

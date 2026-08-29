@@ -105,7 +105,7 @@ LOCAL_CPPFLAGS += -Wall -Wextra -Werror -Wno-unknown-warning-option \
     -DC4_NO_DEBUG_BREAK -DC4_USE_ASSERT=0 -D_LIBCPP_ABI_NAMESPACE=_LIBCPP_ABI_NAMESPACE
 LOCAL_LDFLAGS += -Wl,-z,max-page-size=16384 -Wl,--wrap=dlopen
 LOCAL_LDLIBS += -llog -landroid -ldl -lz
-LOCAL_STATIC_LIBRARIES := arc_helper_ext rapidyaml libcxx
+LOCAL_STATIC_LIBRARIES := arc_helper_ext rapidyaml libcxx libcxx_ryu
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -134,6 +134,36 @@ LOCAL_EXPORT_C_INCLUDES := $(LOCAL_C_INCLUDES)
 LOCAL_CPPFLAGS += -Wno-unknown-warning-option \
     -DC4_NO_DEBUG_BREAK -DC4_USE_ASSERT=0 -D_LIBCPP_ABI_NAMESPACE=_LIBCPP_ABI_NAMESPACE -include vector
 LOCAL_STATIC_LIBRARIES := libcxx
+include $(BUILD_STATIC_LIBRARY)
+
+# <format> needs libc++'s Ryu implementation, but the pinned libcxx submodule
+# keeps its own Android.mk wildcarded to src/*.cpp and src/filesystem/*.cpp.
+# The submodule stays pristine on purpose -- build.ps1 applies the lsplt patch
+# to a disposable copy for exactly this reason -- so the fix lives here instead.
+#
+# Why it is needed at all: __visit_format_arg switches on the *runtime* type of
+# basic_format_arg, so formatter<double>/formatter<float> are instantiated for
+# every std::format call even when no floating-point argument is ever passed.
+# Without these three files every first-party source still compiles, and only
+# the final link fails with undefined __d2s/__d2exp/__d2fixed/__f2s symbols.
+# See docs/cpp/build-pitfalls.md.
+include $(CLEAR_VARS)
+LOCAL_MODULE := libcxx_ryu
+LOCAL_SRC_FILES := \
+    third_party/libcxx/src/ryu/d2fixed.cpp \
+    third_party/libcxx/src/ryu/d2s.cpp \
+    third_party/libcxx/src/ryu/f2s.cpp
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/third_party/libcxx/include \
+    $(LOCAL_PATH)/third_party/libcxx/src
+# Mirrors what third_party/libcxx/Android.mk passes to its own sources: these
+# are libc++ internals, so they need the "building the library" defines and the
+# same visibility annotations, or their emitted symbols will not match the
+# declarations the rest of the module compiles against.
+LOCAL_CPPFLAGS += -DLIBCXX_BUILDING_LIBCXXABI -D_LIBCPP_BUILDING_LIBRARY \
+    -D_LIBCPP_NO_EXCEPTIONS -D_LIBCPP_NO_RTTI \
+    -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS -D__STDC_FORMAT_MACROS \
+    -D_LIBCPP_ABI_NAMESPACE=_LIBCPP_ABI_NAMESPACE
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
