@@ -68,4 +68,5 @@ git submodule update --init --recursive
 
 - 项目结构：`docs/project-structure.md`
 - 版本支持：`docs/version-support.md`
+- 现代 C++ 约定：`docs/cpp/index.md` —— 工具链、实测矩阵、构建陷阱、用法约定
 - 偏移参考：`docs/offsets/6.12.11c-offsets.md`、`docs/offsets/6.16.2c-offsets.md`、`docs/offsets/6.16.8c-offsets.md`、`docs/offsets/7.0.0c-offsets_CN.md`

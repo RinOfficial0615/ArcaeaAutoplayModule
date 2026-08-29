@@ -69,4 +69,5 @@ This project was developed with AI assistance.
 
 - Project structure: `docs/project-structure.md`
 - Version support: `docs/version-support.md`
+- Modern C++ notes: `docs/cpp/index.md` — toolchain, feature matrix, build pitfalls, usage conventions
 - Offsets reference: `docs/offsets/6.12.11c-offsets.md`, `docs/offsets/6.16.2c-offsets.md`, `docs/offsets/6.16.8c-offsets.md`, `docs/offsets/7.0.0c-offsets.md`
