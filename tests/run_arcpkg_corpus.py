@@ -5,81 +5,37 @@ import argparse
 import json
 import os
 import pathlib
-import re
 import shutil
 import subprocess
+import sys
 import zipfile
+
+# Import the sibling helper by path so this runs both as
+# `python tests/run_arcpkg_corpus.py` and `python -m tests.run_arcpkg_corpus`.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import toolchain_probe
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build" / "host-tests"
 MAGIC_ENUM_INCLUDE = ROOT / "third_party" / "magic_enum" / "include"
 DEFAULT_PACKAGES = ROOT / ".tmp" / "arcpkg"
-OFFICIAL_APK = ROOT.parent / "6.16.0f" / "Arcaea Infinity_6.16.0f.apk"
+
+# The Infinity APK is not redistributable, so it is never committed and no
+# default path could work on another machine. Point ARC_OFFICIAL_APK at a local
+# copy; without it the official AFF grammar pass is reported as skipped rather
+# than failed.
+_official_apk = os.environ.get("ARC_OFFICIAL_APK")
+OFFICIAL_APK: pathlib.Path | None = (
+    toolchain_probe.from_env_path(_official_apk) if _official_apk else None
+)
 BUILD.mkdir(parents=True, exist_ok=True)
 
 
-def _version_key(path: pathlib.Path) -> tuple[int, ...]:
-    numbers = re.findall(r"\d+", path.name)
-    return tuple(int(number) for number in numbers) or (0,)
-
-
-def _find_ndk_clang() -> str:
-    roots: list[pathlib.Path] = []
-    for variable in ("ANDROID_NDK_ROOT", "ANDROID_NDK_HOME"):
-        value = os.environ.get(variable)
-        if value:
-            roots.append(pathlib.Path(value))
-    roots.extend(
-        pathlib.Path(path)
-        for path in (
-            r"D:\android_sdk\ndk",
-            pathlib.Path.home() / "AppData/Local/Android/Sdk/ndk",
-            pathlib.Path.home() / "Android/Sdk/ndk",
-            pathlib.Path("/opt/android-sdk/ndk"),
-        )
-    )
-    candidates: list[tuple[tuple[int, ...], pathlib.Path]] = []
-    for root in roots:
-        if root.is_file():
-            candidates.append((_version_key(root), root))
-            continue
-        if not root.is_dir():
-            continue
-        ndk_dirs = [root] if (root / "source.properties").is_file() else [
-            ndk for ndk in root.iterdir() if ndk.is_dir()
-        ]
-        for ndk in ndk_dirs:
-            if not ndk.is_dir():
-                continue
-            for host in ("windows-x86_64", "linux-x86_64", "darwin-x86_64"):
-                suffix = "clang++.exe" if host.startswith("windows") else "clang++"
-                compiler = ndk / "toolchains" / "llvm" / "prebuilt" / host / "bin" / suffix
-                if compiler.is_file():
-                    candidates.append((_version_key(ndk), compiler))
-    if not candidates:
-        raise SystemExit("No NDK clang++ found. Set ANDROID_NDK_ROOT or install an NDK.")
-    return str(max(candidates, key=lambda candidate: (candidate[0], str(candidate[1])))[1])
-
-
-def _find_winpthread() -> pathlib.Path:
-    candidates = []
-    if os.environ.get("MINGW_PREFIX"):
-        candidates.append(pathlib.Path(os.environ["MINGW_PREFIX"]) / "lib" / "libwinpthread.a")
-    candidates.extend(
-        pathlib.Path(path)
-        for path in (
-            r"C:\Strawberry\c\x86_64-w64-mingw32\lib\libwinpthread.a",
-            r"C:\msys64\mingw64\x86_64-w64-mingw32\lib\libwinpthread.a",
-        )
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise SystemExit("libwinpthread.a is missing; install a MinGW host runtime.")
-
-
-CXX = _find_ndk_clang()
-HOST_LINK_ARGS = ["-L", str(_find_winpthread().parent), "-lwinpthread"]
+CXX = toolchain_probe.find_ndk_clang()
+# Same host toolchain as run_host_tests.py: NDK clang++ driving the MSVC STL.
+# Targetting MinGW instead would need GCC's libgcc_eh/libgcc_s, which no NDK
+# ships -- the link fails before this script gets to do anything useful.
+HOST_COMPILE_ARGS, HOST_LINK_ARGS = toolchain_probe.host_toolchain_args()
 RYML_SOURCES = [
     ROOT / "third_party" / "rapidyaml" / "ext" / "c4core.src" / "c4" / "base64.cpp",
     ROOT / "third_party" / "rapidyaml" / "ext" / "c4core.src" / "c4" / "error.cpp",
@@ -113,6 +69,7 @@ def compile_ryml_objects() -> list[pathlib.Path]:
             subprocess.run(
                 [
                     CXX,
+                    *HOST_COMPILE_ARGS,
                     "-std=c++23",
                     "-O2",
                     "-c",
@@ -134,6 +91,7 @@ def compile_exe(name: str, sources: list[str], extra: list[str] | None = None) -
     exe = BUILD / name
     cmd = [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
@@ -141,11 +99,10 @@ def compile_exe(name: str, sources: list[str], extra: list[str] | None = None) -
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-I",
         str(ROOT / "src"),
+        "-I",
+        str(ROOT / "tests" / "stubs"),
         "-I",
         str(MAGIC_ENUM_INCLUDE),
         *sources,
@@ -201,15 +158,13 @@ def compile_corpus(ryml_objects: list[pathlib.Path]) -> pathlib.Path:
     subprocess.run(
         [
             CXX,
+            *HOST_COMPILE_ARGS,
             *HOST_LINK_ARGS,
             "-std=c++23",
             "-O2",
             "-Wall",
             "-Wextra",
             "-Werror",
-            "-static",
-            "-static-libgcc",
-            "-static-libstdc++",
             "-DARC_HELPER_HOST_TEST",
             "-DC4_NO_DEBUG_BREAK",
             "-DC4_USE_ASSERT=0",
@@ -239,7 +194,6 @@ def compile_corpus(ryml_objects: list[pathlib.Path]) -> pathlib.Path:
             str(ROOT / "src" / "utils" / "ZipArchive.cpp"),
             str(ROOT / "src" / "utils" / "ImageRaster.cpp"),
             *map(str, ryml_objects),
-            "-lz",
             "-o",
             str(exe),
         ],
@@ -261,8 +215,8 @@ def stage_packages(source: pathlib.Path, dest: pathlib.Path) -> list[dict]:
 
 
 def check_official_files(checker: pathlib.Path) -> dict:
-    if not OFFICIAL_APK.is_file():
-        return {"skipped": True, "reason": "Infinity APK missing"}
+    if OFFICIAL_APK is None or not OFFICIAL_APK.is_file():
+        return {"skipped": True, "reason": "set ARC_OFFICIAL_APK to a local Infinity APK"}
     tmp = BUILD / "official-aff"
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -325,14 +279,17 @@ def main() -> int:
     if not args.skip_official:
         official = check_official_files(compile_file_checker())
         report["official_infinity"] = official
-        print(
-            "official Infinity",
-            official.get("ok"),
-            "/",
-            official.get("aff_count"),
-            "fail",
-            len(official.get("fail") or []),
-        )
+        if official.get("skipped"):
+            print(f"official Infinity skipped: {official['reason']}")
+        else:
+            print(
+                "official Infinity",
+                official.get("ok"),
+                "/",
+                official.get("aff_count"),
+                "fail",
+                len(official.get("fail") or []),
+            )
         if official.get("fail"):
             for item in official["fail"][:12]:
                 print("  official fail", item)
