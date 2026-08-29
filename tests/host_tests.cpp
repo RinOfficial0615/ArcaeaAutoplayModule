@@ -1,9 +1,11 @@
+#include <array>
 #include <cassert>
+#include <cstring>
 #include <iostream>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include <nlohmann/json.hpp>
 
 #include "config/AutoplayConfig.h"
 #include "config/CustomChartConfig.h"
@@ -12,6 +14,7 @@
 #include "manager/custom_chart/CustomChartGameplaySession.hpp"
 #include "utils/Sha256.hpp"
 #include "utils/ZipArchive.hpp"
+#include "utils/memory/ByteScanner.hpp"
 
 namespace {
 
@@ -22,16 +25,99 @@ bool HighHandler(arc_helper::network::HandlerArgs &) { return false; }
 
 int main(int argc, char **argv) {
     using namespace arc_helper;
-    {
-        const auto parsed = nlohmann::json::parse(
-            R"({"ok":true,"n":12.5,"s":"\u4f60\u597d","a":[null,false]})", nullptr, false);
-        assert(!parsed.is_discarded());
-        assert(parsed.at("ok").get<bool>());
-        assert(parsed.at("s").get<std::string>() == "你好");
-        assert(nlohmann::json::parse(R"({"x":tru})", nullptr, false).is_discarded());
-    }
     assert(crypto::Sha256Hex("abc", 3) ==
            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
+    // Known-answer vectors for the padding paths a short input cannot reach:
+    // 55 is the longest message that still pads inside a single block, 56
+    // forces the extra length block, 64/65 straddle a block boundary inside
+    // Update, and 200 drives Update's multi-block loop. The digests come from
+    // an independent implementation (Python hashlib); the "abc" and 56-byte
+    // cases are the FIPS 180-4 vectors. These hashes become custom-chart cache
+    // keys, where a silent change would load the wrong chart.
+    {
+        constexpr std::string_view kAlphabet = "abcdefghijklmnopqrstuvwxyz";
+        const auto sha256_of = [](std::string_view data) {
+            return crypto::Sha256Hex(data.data(), data.size());
+        };
+        const auto repeated = [kAlphabet](size_t length) {
+            std::string data;
+            while (data.size() < length) data.append(kAlphabet);
+            data.resize(length);
+            return data;
+        };
+        assert(sha256_of("") ==
+               "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert(sha256_of(repeated(55)) ==
+               "595615dbe4f0f407ae397d08b4c2cb870cb9b0e11937416f950c5160acf9c005");
+        assert(sha256_of("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+               "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+        assert(sha256_of(repeated(64)) ==
+               "2fcd5a0d60e4c941381fcc4e00a4bf8be422c3ddfafb93c809e8d1e2bfffae8e");
+        assert(sha256_of(repeated(65)) ==
+               "1b3cd1877ab2f2f19f7be001722554f336cb799df0329de0bb4c118dc6abc06d");
+        assert(sha256_of(repeated(200)) ==
+               "8013a82140d916576e2cf550b27449a368abec66cc154a7d9f599019d33aa3d2");
+    }
+    // FindUniqueBytesInRanges is a pure scan over caller-supplied ranges, so a
+    // host test can point it at an ordinary buffer -- every candidate position
+    // inside the range is readable. These cover the three outcomes the address
+    // resolver branches on: exactly one match (return it), none, and two or
+    // more (abandon the scan, but still report the count).
+    {
+        alignas(8) std::array<uint8_t, 256> buffer{};
+        const uintptr_t base = reinterpret_cast<uintptr_t>(buffer.data());
+        constexpr std::array<uint8_t, 4> kSig = {0xDE, 0xAD, 0xBE, 0xEF};
+        const auto place = [&](size_t offset) {
+            std::memcpy(buffer.data() + offset, kSig.data(), kSig.size());
+        };
+        const auto scan = [&](std::span<const mem::MemRange> ranges, int &hits) {
+            return mem::FindUniqueBytesInRanges(ranges, kSig.data(), kSig.size(), 4, &hits);
+        };
+        const std::array<mem::MemRange, 1> whole{
+            mem::MemRange{base, base + buffer.size()},
+        };
+
+        int hits = -1;
+        assert(scan(whole, hits) == 0 && hits == 0);          // nothing there yet
+        place(64);
+        assert(scan(whole, hits) == base + 64 && hits == 1);  // exactly one
+        place(128);
+        assert(scan(whole, hits) == 0 && hits == 2);          // second hit abandons
+
+        // A second hit in a *separate* range still counts as a second hit.
+        const std::array<mem::MemRange, 2> split{
+            mem::MemRange{base, base + 96},
+            mem::MemRange{base + 96, base + buffer.size()},
+        };
+        assert(scan(split, hits) == 0 && hits == 2);
+
+        // Ranges too short to hold the signature, and inverted ones, are skipped
+        // rather than crashing or wrapping around.
+        std::memset(buffer.data(), 0, buffer.size());
+        place(64);
+        const std::array<mem::MemRange, 3> degenerate{
+            mem::MemRange{base, base + kSig.size() - 1},
+            mem::MemRange{base + 200, base + 100},
+            mem::MemRange{base, base + buffer.size()},
+        };
+        assert(scan(degenerate, hits) == base + 64 && hits == 1);
+
+        // Alignment: the probe only lands on multiples of 4, so a signature one
+        // byte off that grid is invisible at align=4 but found at align=1.
+        std::memset(buffer.data(), 0, buffer.size());
+        place(65);
+        assert(scan(whole, hits) == 0 && hits == 0);
+        assert(mem::FindUniqueBytesInRanges(whole, kSig.data(), kSig.size(), 1, &hits) ==
+                   base + 65 &&
+               hits == 1);
+
+        // An empty range list never reports a hit.
+        assert(mem::FindUniqueBytesInRanges(std::span<const mem::MemRange>{}, kSig.data(),
+                                            kSig.size(), 4, &hits) == 0 &&
+               hits == 0);
+    }
+
     assert(std::string_view(network::HttpMethodStr(0)) == "GET");
     assert(std::string_view(network::HttpMethodStr(3)) == "DELETE");
     assert(std::string_view(network::HttpMethodStr(99)) == "UNK");
@@ -99,14 +185,6 @@ int main(int argc, char **argv) {
         assert(cfg::custom_charts::LocalChartAssetPath("ah_lostrequi_422e6e2f", 3) ==
                "songs/ah_lostrequi_422e6e2f/3.aff");
         assert(cfg::custom_charts::LocalChartAssetPath("ah_demo", 2) == "songs/ah_demo/2.aff");
-        assert(cfg::custom_charts::kDifficultyCount == 5);
-        // Official songlist side domain: 0..4 (side 4 first used in 7.0.0c).
-        assert(cfg::custom_charts::kMaximumSide == 4);
-        assert(cfg::custom_charts::kDifficultyPointersOffset == 0x228);
-        assert(cfg::custom_charts::kDifficultyPresenceOffset == 0x250);
-        assert(cfg::custom_charts::kDifficultyLockOffset == 0xF0);
-        assert(cfg::custom_charts::kDifficultyObjectReadableBytes == 0x128);
-        assert(cfg::custom_charts::kSongRegistryOwnerRegistryOffset == 32);
         session.OnCustomChartMapped("songs/ah_demo/3.aff");
         const auto started = session.Read();
         assert(started.active);

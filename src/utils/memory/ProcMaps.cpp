@@ -7,6 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <ranges>
+#include <string_view>
 #include <vector>
 
 #include <sys/mman.h>
@@ -43,35 +45,26 @@ bool PathMatchesSoname(std::string_view path, std::string_view soname) {
     return basename == soname;
 }
 
+// The leading set deliberately excludes '\n': the caller hands over the tail of
+// a single maps line, so a newline there would be data, not padding.
 std::string_view TrimSpaces(std::string_view sv) {
-    while (!sv.empty()) {
-        const char c = sv.front();
-        if (c == ' ' || c == '\t') {
-            sv.remove_prefix(1);
-            continue;
-        }
-        break;
-    }
-
-    while (!sv.empty()) {
-        const char c = sv.back();
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-            sv.remove_suffix(1);
-            continue;
-        }
-        break;
-    }
-
-    return sv;
+    constexpr std::string_view kLeading = " \t";
+    constexpr std::string_view kTrailing = " \t\n\r";
+    const size_t begin = sv.find_first_not_of(kLeading);
+    if (begin == std::string_view::npos) return {};
+    return sv.substr(begin, sv.find_last_not_of(kTrailing) - begin + 1);
 }
 
-bool ParseProcMapsLine(const char *line,
-                      uintptr_t *out_start,
-                      uintptr_t *out_end,
-                      uintptr_t *out_off,
-                      int *out_perms,
-                      std::string_view *out_path) {
-    if (!line || !out_start || !out_end || !out_off || !out_perms || !out_path) return false;
+struct MapsLine {
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    uintptr_t offset = 0;
+    int permissions = 0;
+    std::string_view path;
+};
+
+bool ParseProcMapsLine(const char *line, MapsLine &out) {
+    if (!line) return false;
 
     uintptr_t start = 0;
     uintptr_t end = 0;
@@ -94,49 +87,44 @@ bool ParseProcMapsLine(const char *line,
                                &path_off);
     if (scanned != 7) return false;
 
-    int perms = 0;
-    if (perm[0] == 'r') perms |= PROT_READ;
-    if (perm[1] == 'w') perms |= PROT_WRITE;
-    if (perm[2] == 'x') perms |= PROT_EXEC;
+    if (perm[0] == 'r') out.permissions |= PROT_READ;
+    if (perm[1] == 'w') out.permissions |= PROT_WRITE;
+    if (perm[2] == 'x') out.permissions |= PROT_EXEC;
 
-    std::string_view path;
-    if (path_off > 0) {
-        path = std::string_view(line + path_off);
-        path = TrimSpaces(path);
-    }
-
-    *out_start = start;
-    *out_end = end;
-    *out_off = off;
-    *out_perms = perms;
-    *out_path = path;
+    out.start = start;
+    out.end = end;
+    out.offset = off;
+    out.path = path_off > 0 ? TrimSpaces(std::string_view(line + path_off)) : std::string_view{};
     return true;
 }
 
-bool RefreshPermissionCache(PermissionCache &cache, uint64_t generation) {
+// Scans /proc/self/maps and hands each decoded line to `visit`, which returns
+// false to stop early. Returns false when the file cannot be opened or the read
+// ended in an error -- callers must then discard any partial results, because a
+// truncated maps file would silently hide protected ranges.
+template <typename Visit>
+bool ScanMaps(Visit &&visit) {
     FILE *fp = fopen("/proc/self/maps", "r");
-    if (!fp) {
-        cache.valid = false;
-        cache.ranges.clear();
-        return false;
-    }
+    if (!fp) return false;
 
-    cache.ranges.clear();
     char line[4096];
     while (fgets(line, sizeof(line), fp)) {
-        uintptr_t start = 0;
-        uintptr_t end = 0;
-        uintptr_t off = 0;
-        int permissions = 0;
-        std::string_view path;
-        if (!ParseProcMapsLine(line, &start, &end, &off, &permissions, &path)) continue;
-        (void)off;
-        (void)path;
-        if (end > start) cache.ranges.push_back({start, end, permissions});
+        MapsLine parsed;
+        if (ParseProcMapsLine(line, parsed) && !visit(parsed)) break;
     }
-    const bool read_ok = ferror(fp) == 0;
+    const bool complete = ferror(fp) == 0;
     fclose(fp);
-    if (!read_ok) {
+    return complete;
+}
+
+bool RefreshPermissionCache(PermissionCache &cache, uint64_t generation) {
+    cache.ranges.clear();
+    if (!ScanMaps([&](const MapsLine &line) {
+            if (line.end > line.start) {
+                cache.ranges.push_back({line.start, line.end, line.permissions});
+            }
+            return true;
+        })) {
         cache.valid = false;
         cache.ranges.clear();
         return false;
@@ -188,59 +176,44 @@ bool CachedRangePermitted(uintptr_t addr, size_t len, int required_permissions) 
 
 } // namespace
 
+// Splits on '\n' and drops the '\r' of a CRLF pair. The returned views borrow
+// `text`, so they are only valid while the caller's buffer is alive.
+constexpr auto LinesOf(std::string_view text) {
+    return std::views::split(text, '\n') | std::views::transform([](auto &&line) {
+        std::string_view view(line.begin(), line.end());
+        if (view.ends_with('\r')) view.remove_suffix(1);
+        return view;
+    });
+}
+
 uintptr_t ProcMaps::FindLibraryBaseFromMaps(std::string_view maps_text,
                                             std::string_view soname) {
     uintptr_t best_off = std::numeric_limits<uintptr_t>::max();
     uintptr_t best_bias = 0;
 
-    while (!maps_text.empty()) {
-        const size_t nl = maps_text.find('\n');
-        std::string_view line =
-            nl == std::string_view::npos ? maps_text : maps_text.substr(0, nl);
-        maps_text = nl == std::string_view::npos ? std::string_view{}
-                                                 : maps_text.substr(nl + 1);
-        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-        if (line.empty()) continue;
-
+    for (const std::string_view line : LinesOf(maps_text)) {
         char buf[4096];
-        if (line.size() >= sizeof(buf)) continue;
+        if (line.empty() || line.size() >= sizeof(buf)) continue;
         std::memcpy(buf, line.data(), line.size());
         buf[line.size()] = '\0';
 
-        uintptr_t start = 0;
-        uintptr_t end = 0;
-        uintptr_t off = 0;
-        int perms = 0;
-        std::string_view path;
-        if (!ParseProcMapsLine(buf, &start, &end, &off, &perms, &path)) continue;
-        (void)end;
-        if (!PathMatchesSoname(path, soname)) continue;
-        ConsiderExecLoadBias(start, off, perms, best_off, best_bias);
+        MapsLine parsed;
+        if (!ParseProcMapsLine(buf, parsed)) continue;
+        if (!PathMatchesSoname(parsed.path, soname)) continue;
+        ConsiderExecLoadBias(parsed.start, parsed.offset, parsed.permissions, best_off, best_bias);
     }
 
     return best_bias;
 }
 
 uintptr_t ProcMaps::FindLibraryBase(std::string_view soname) {
-    FILE *fp = fopen("/proc/self/maps", "r");
-    if (!fp) return 0;
-
-    char line[4096];
     uintptr_t best_off = std::numeric_limits<uintptr_t>::max();
     uintptr_t best_bias = 0;
-    while (fgets(line, sizeof(line), fp)) {
-        uintptr_t start = 0;
-        uintptr_t end = 0;
-        uintptr_t off = 0;
-        int perms = 0;
-        std::string_view path;
-        if (!ParseProcMapsLine(line, &start, &end, &off, &perms, &path)) continue;
-        (void)end;
-        if (!PathMatchesSoname(path, soname)) continue;
-        ConsiderExecLoadBias(start, off, perms, best_off, best_bias);
-    }
-
-    fclose(fp);
+    ScanMaps([&](const MapsLine &line) {
+        if (!PathMatchesSoname(line.path, soname)) return true;
+        ConsiderExecLoadBias(line.start, line.offset, line.permissions, best_off, best_bias);
+        return true;
+    });
     return best_bias;
 }
 
@@ -248,27 +221,14 @@ bool ProcMaps::GetLibraryExecRanges(std::string_view soname,
                                     std::array<MemRange, 64> &out_ranges,
                                     size_t &out_count) {
     out_count = 0;
-
-    FILE *fp = fopen("/proc/self/maps", "r");
-    if (!fp) return false;
-
-    char line[4096];
-    while (fgets(line, sizeof(line), fp)) {
-        uintptr_t start = 0;
-        uintptr_t end = 0;
-        uintptr_t off = 0;
-        int perms = 0;
-        std::string_view path;
-        if (!ParseProcMapsLine(line, &start, &end, &off, &perms, &path)) continue;
-        (void)off;
-        if ((perms & (PROT_READ | PROT_EXEC)) != (PROT_READ | PROT_EXEC)) continue;
-        if (!PathMatchesSoname(path, soname)) continue;
-        if (out_count >= out_ranges.size()) break;
-
-        out_ranges[out_count++] = MemRange{start, end};
-    }
-
-    fclose(fp);
+    constexpr int kRequired = PROT_READ | PROT_EXEC;
+    ScanMaps([&](const MapsLine &line) {
+        if (out_count >= out_ranges.size()) return false;
+        if ((line.permissions & kRequired) != kRequired) return true;
+        if (!PathMatchesSoname(line.path, soname)) return true;
+        out_ranges[out_count++] = MemRange{line.start, line.end};
+        return true;
+    });
     return out_count > 0;
 }
 

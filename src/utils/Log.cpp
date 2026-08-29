@@ -5,6 +5,8 @@
 #include <chrono>
 #include <ctime>
 #include <filesystem>
+#include <format>
+#include <ranges>
 #include <string_view>
 #include <vector>
 
@@ -128,27 +130,21 @@ std::tm LocalTime(std::time_t value) {
     return result;
 }
 
+// std::format rather than snprintf: a long __FILE__ path used to be silently cut
+// off at the fixed buffer size, and the prefix length is not bounded anyway.
 std::string FilePrefix(LogLevel level, const char *source_file, int source_line) {
     const auto now = std::chrono::system_clock::now();
-    const auto time_value = std::chrono::system_clock::to_time_t(now);
-    const std::tm local = LocalTime(time_value);
-    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
-    char buffer[128]{};
-    std::snprintf(buffer, sizeof(buffer),
-                  "[%04d-%02d-%02d %02d:%02d:%02d.%03lld] [%s] [%s:%d] ",
-                  local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
-                  local.tm_hour, local.tm_min, local.tm_sec,
-                  static_cast<long long>(milliseconds.count()), LevelName(level),
-                  source_file ? source_file : "?", source_line);
-    return buffer;
+    const std::tm local = LocalTime(std::chrono::system_clock::to_time_t(now));
+    const auto milliseconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    return std::format("[{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}] [{}] [{}:{}] ",
+                       local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour,
+                       local.tm_min, local.tm_sec, milliseconds.count(), LevelName(level),
+                       source_file ? source_file : "?", source_line);
 }
 
 std::string LogcatPrefix(const char *source_file, int source_line) {
-    char buffer[96]{};
-    std::snprintf(buffer, sizeof(buffer), "[%s:%d] ",
-                  source_file ? source_file : "?", source_line);
-    return buffer;
+    return std::format("[{}:{}] ", source_file ? source_file : "?", source_line);
 }
 
 } // namespace
@@ -237,16 +233,12 @@ bool Logger::OpenFileLocked(const std::string &root_dir) {
     std::filesystem::create_directories(logs_dir, ec);
     if (ec) return false;
 
-    const std::time_t time_value = std::chrono::system_clock::to_time_t(
-        std::chrono::system_clock::now());
-    const std::tm local = LocalTime(time_value);
-    char filename[96]{};
-    std::snprintf(filename, sizeof(filename),
-                  "%s%04d%02d%02d-%02d%02d%02d-%d%s",
-                  kLogFileBaseName,
-                  local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
-                  local.tm_hour, local.tm_min, local.tm_sec, static_cast<int>(getpid()),
-                  kLogFileExtension);
+    const std::tm local = LocalTime(
+        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+    const std::string filename =
+        std::format("{}{:04}{:02}{:02}-{:02}{:02}{:02}-{}{}", kLogFileBaseName,
+                    local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour,
+                    local.tm_min, local.tm_sec, static_cast<int>(getpid()), kLogFileExtension);
     const std::filesystem::path path = logs_dir / filename;
     file_ = std::fopen(path.string().c_str(), "ab");
     if (!file_) return false;
@@ -266,11 +258,13 @@ void Logger::RotateFilesLocked(const std::string &logs_dir) {
             files.push_back(it->path());
         }
     }
-    std::sort(files.begin(), files.end(), [](const auto &left, const auto &right) {
-        return left.filename().string() < right.filename().string();
+    // Names sort chronologically because the timestamp fields are zero-padded
+    // and fixed width, so "oldest first" is just the natural order.
+    std::ranges::sort(files, {}, [](const std::filesystem::path &path) {
+        return path.filename().string();
     });
     while (files.size() > kMaxRetainedLogFiles) {
-        const auto oldest = std::find_if(files.begin(), files.end(), [this](const auto &path) {
+        const auto oldest = std::ranges::find_if(files, [this](const auto &path) {
             return path.string() != file_path_;
         });
         if (oldest == files.end()) break;

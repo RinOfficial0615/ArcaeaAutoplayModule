@@ -7,9 +7,11 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <optional>
+#include <ranges>
 #include <set>
-#include <sstream>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -23,17 +25,30 @@ constexpr std::array<std::string_view, 9> kOfficialScenecontrol = {
     "enwidencamera", "enwidenlanes", "arcahvdistort", "arcahvdebris",
 };
 
-std::string Trim(std::string_view value) {
-    size_t b = 0, e = value.size();
-    while (b < e && (value[b] == ' ' || value[b] == '\t' || value[b] == '\r')) ++b;
-    while (e > b && (value[e - 1] == ' ' || value[e - 1] == '\t' || value[e - 1] == '\r')) --e;
-    return std::string(value.substr(b, e - b));
+constexpr std::string_view kBlanks = " \t\r";
+
+// Borrows `value`; callers that need an owned copy use Trim() below.
+std::string_view TrimView(std::string_view value) {
+    const size_t begin = value.find_first_not_of(kBlanks);
+    if (begin == std::string_view::npos) return {};
+    return value.substr(begin, value.find_last_not_of(kBlanks) - begin + 1);
+}
+
+std::string Trim(std::string_view value) { return std::string(TrimView(value)); }
+
+// Splits on '\n' and strips the '\r' of a CRLF pair -- packages authored on
+// Windows ship those. The produced views borrow `text`, so consume them within
+// the same statement/loop and never store them.
+constexpr auto LinesOf(std::string_view text) {
+    return std::views::split(text, '\n') | std::views::transform([](auto &&line) {
+        std::string_view view(line.begin(), line.end());
+        if (view.ends_with('\r')) view.remove_suffix(1);
+        return view;
+    });
 }
 
 std::string Lower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return std::tolower(c);
-    });
+    std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::tolower(c); });
     return s;
 }
 
@@ -143,37 +158,30 @@ bool ParseInt(std::string_view text, int64_t &out) {
 }
 
 bool LooksLikeInteger(std::string_view text) {
-    const std::string token = Trim(text);
+    const std::string_view token = TrimView(text);
     if (token.empty()) return false;
-    size_t i = (token[0] == '+' || token[0] == '-') ? 1 : 0;
-    if (i >= token.size()) return false;
-    for (; i < token.size(); ++i) {
-        if (token[i] < '0' || token[i] > '9') return false;
-    }
-    return true;
+    const std::string_view digits =
+        (token.front() == '+' || token.front() == '-') ? token.substr(1) : token;
+    if (digits.empty()) return false;
+    return std::ranges::all_of(digits, [](char c) { return c >= '0' && c <= '9'; });
 }
 
 bool HasQuote(std::string_view text) {
-    return text.find('"') != std::string_view::npos || text.find('\'') != std::string_view::npos;
+    return text.contains('"') || text.contains('\'');
 }
 
 std::string FormatFloat(double value) {
-    std::ostringstream out;
-    out.setf(std::ios::fixed);
-    out.precision(2);
-    out << value;
-    return out.str();
+    return std::format("{:.2f}", value);
 }
 
 bool OfficialScenecontrol(std::string_view type) {
     const std::string key = Lower(std::string(type));
-    return std::find(kOfficialScenecontrol.begin(), kOfficialScenecontrol.end(),
-                     std::string_view(key)) != kOfficialScenecontrol.end();
+    return std::ranges::contains(kOfficialScenecontrol, std::string_view(key));
 }
 
-void AddDiag(std::vector<Diagnostic> &out, int line, std::string item,
-             std::string status, std::string detail) {
-    out.push_back({line, std::move(item), std::move(status), std::move(detail)});
+void AddDiag(std::vector<Diagnostic> &out, int line, std::string_view item,
+             std::string_view status, std::string_view detail) {
+    out.push_back({line, std::string(item), std::string(status), std::string(detail)});
 }
 
 std::string JoinArgs(const std::vector<std::string> &args) {
@@ -234,31 +242,41 @@ std::string ShiftNumber(const std::string &token, int64_t offset) {
     return std::to_string(AddTiming(value, offset));
 }
 
-std::string ShiftArcTaps(std::string suffix, int64_t offset) {
+// Rewrites every `arctap(...)` argument list inside `suffix` and copies the
+// surrounding text verbatim. An unterminated `arctap(` is copied as-is rather
+// than dropped -- deciding what to report stays with the caller's diagnostics.
+// `rewrite` takes the split arguments by value and returns the replacement list.
+template <typename Rewrite>
+std::string RewriteArcTapSuffix(std::string_view suffix, Rewrite &&rewrite) {
+    constexpr std::string_view kArcTap = "arctap(";
     std::string out;
-    out.reserve(suffix.size() + 8);
-    size_t i = 0;
-    while (i < suffix.size()) {
-        const size_t pos = suffix.find("arctap(", i);
-        if (pos == std::string::npos) {
+    out.reserve(suffix.size());
+    for (size_t i = 0; i < suffix.size();) {
+        const size_t open = suffix.find(kArcTap, i);
+        if (open == std::string_view::npos) {
             out.append(suffix.substr(i));
             break;
         }
-        out.append(suffix.substr(i, pos - i));
-        const size_t open = pos + 6;
-        const size_t close = suffix.find(')', open + 1);
-        if (close == std::string::npos) {
-            out.append(suffix.substr(pos));
+        out.append(suffix.substr(i, open - i));
+        const size_t args_begin = open + kArcTap.size();
+        const size_t close = suffix.find(')', args_begin);
+        if (close == std::string_view::npos) {
+            out.append(suffix.substr(open));
             break;
         }
-        auto args = SplitTopLevel(suffix.substr(open + 1, close - open - 1));
-        if (!args.empty()) args[0] = ShiftNumber(args[0], offset);
-        out += "arctap(";
-        out += JoinArgs(args);
+        out += kArcTap;
+        out += JoinArgs(rewrite(SplitTopLevel(suffix.substr(args_begin, close - args_begin))));
         out.push_back(')');
         i = close + 1;
     }
     return out;
+}
+
+std::string ShiftArcTaps(std::string_view suffix, int64_t offset) {
+    return RewriteArcTapSuffix(suffix, [offset](std::vector<std::string> args) {
+        if (!args.empty()) args[0] = ShiftNumber(args[0], offset);
+        return args;
+    });
 }
 
 std::string ShiftLine(std::string_view line, int64_t offset) {
@@ -285,13 +303,10 @@ struct NormalizeState {
 };
 
 std::string BodyAfterHeader(std::string_view text) {
-    std::istringstream in{std::string(text)};
-    std::string line;
     bool header = true;
     std::string body;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        const std::string trimmed = Trim(line);
+    for (const std::string_view line : LinesOf(text)) {
+        const std::string_view trimmed = TrimView(line);
         if (header) {
             if (trimmed == "-") header = false;
             continue;
@@ -309,13 +324,13 @@ std::string BodyAfterHeader(std::string_view text) {
 // tracecoleeee00). Labels stay verbatim instead of being dropped.
 bool TimingGroupLabel(std::string_view token) {
     if (token.empty()) return false;
-    const unsigned char first = static_cast<unsigned char>(token.front());
-    if (!std::isalpha(first) && token.front() != '_') return false;
-    for (const char c : token) {
-        const unsigned char u = static_cast<unsigned char>(c);
-        if (!std::isalnum(u) && c != '_') return false;
+    const auto ident_char = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    };
+    if (!std::isalpha(static_cast<unsigned char>(token.front())) && token.front() != '_') {
+        return false;
     }
-    return true;
+    return std::ranges::all_of(token, ident_char);
 }
 
 // Tokens reserved by the official lexer; a group label spelling one of these
@@ -327,7 +342,7 @@ bool TimingGroupLabelKeyword(std::string_view token) {
         "timinggroup", "flick", "arctap",  "at",       "true",
         "false",    "rgb",    "designant",
     };
-    return std::find(kKeywords.begin(), kKeywords.end(), token) != kKeywords.end();
+    return std::ranges::contains(kKeywords, token);
 }
 
 std::string ClampIntTiming(const std::string &token, int line, std::string_view item,
@@ -389,7 +404,7 @@ std::optional<std::string> RewriteScenecontrol(Call call, int line,
     }
     call.args[1] = type;
     std::vector<std::string> extra(call.args.begin() + 2, call.args.end());
-    if (std::any_of(extra.begin(), extra.end(), [](const std::string &a) { return HasQuote(a); })) {
+    if (std::ranges::any_of(extra, HasQuote)) {
         AddDiag(diagnostics, line, type, "DROPPED_COMMAND", "string scenecontrol argument");
         return std::nullopt;
     }
@@ -439,9 +454,7 @@ std::optional<std::string> OfficialAngleFromProperty(std::string_view prop) {
     tenths %= 3600;
     if (tenths < 0) tenths += 3600;
     if (tenths == 0) return std::string{};
-    std::string out = x ? "anglex" : "angley";
-    out += std::to_string(tenths);
-    return out;
+    return std::format("{}{}", x ? "anglex" : "angley", tenths);
 }
 
 std::string RewriteTimingGroup(Call call, int line, std::vector<Diagnostic> &diagnostics) {
@@ -455,13 +468,13 @@ std::string RewriteTimingGroup(Call call, int line, std::vector<Diagnostic> &dia
                         "ArcCreate timinggroup property");
                 continue;
             }
-            if (std::find(kept.begin(), kept.end(), *angle) == kept.end()) {
+            if (!std::ranges::contains(kept, *angle)) {
                 kept.push_back(*angle);
                 AddDiag(diagnostics, line, raw, "REWRITTEN", *angle);
             }
             continue;
         }
-        if (prop.find('=') != std::string::npos) {
+        if (prop.contains('=')) {
             AddDiag(diagnostics, line, raw, "DROPPED_COMMAND",
                     "ArcCreate timinggroup property");
             continue;
@@ -473,26 +486,23 @@ std::string RewriteTimingGroup(Call call, int line, std::vector<Diagnostic> &dia
         }
         // A label containing '_' is the final composed ident; single segments
         // join with '_'.
-        if (prop.find('_') != std::string_view::npos) {
+        if (prop.contains('_')) {
             kept.clear();
             kept.push_back(prop);
             break;
         }
-        if (std::find(kept.begin(), kept.end(), prop) == kept.end()) kept.push_back(prop);
+        if (!std::ranges::contains(kept, prop)) kept.push_back(prop);
     }
-    std::string ident;
-    for (const auto &part : kept) {
-        if (!ident.empty()) ident.push_back('_');
-        ident += part;
-    }
+    const std::string ident = std::ranges::fold_left(
+        kept, std::string{}, [](std::string joined, const std::string &part) {
+            if (!joined.empty()) joined.push_back('_');
+            joined += part;
+            return joined;
+        });
     if (kept.size() > 1) {
-        AddDiag(diagnostics, line, ident, "REWRITTEN",
-                "timinggroup properties joined with _");
+        AddDiag(diagnostics, line, ident, "REWRITTEN", "timinggroup properties joined with _");
     }
-    std::string out = "timinggroup(";
-    out += ident;
-    out += "){";
-    return out;
+    return std::format("timinggroup({}){{", ident);
 }
 
 bool IsTraceFlag(std::string_view raw) {
@@ -500,9 +510,7 @@ bool IsTraceFlag(std::string_view raw) {
     return text == "true" || text == "false" || text == "designant";
 }
 
-bool SuffixHasArcTap(std::string_view suffix) {
-    return suffix.find("arctap(") != std::string_view::npos;
-}
+bool SuffixHasArcTap(std::string_view suffix) { return suffix.contains("arctap("); }
 
 std::string EnsureFloatArg(std::string token, int line, std::string_view item,
                            std::vector<Diagnostic> &diagnostics) {
@@ -609,38 +617,15 @@ std::string RewriteTimedEvent(Call call, int line, std::vector<Diagnostic> &diag
         }
     }
     if (name == "arc" && !call.suffix.empty()) {
-        std::string suffix = call.suffix;
-        std::string out;
-        out.reserve(suffix.size());
-        size_t i = 0;
-        while (i < suffix.size()) {
-            const size_t pos = suffix.find("arctap(", i);
-            if (pos == std::string::npos) {
-                out.append(suffix.substr(i));
-                break;
-            }
-            out.append(suffix.substr(i, pos - i));
-            const size_t open = pos + 6;
-            const size_t close = suffix.find(')', open + 1);
-            if (close == std::string::npos) {
-                out.append(suffix.substr(pos));
-                break;
-            }
-            auto args = SplitTopLevel(suffix.substr(open + 1, close - open - 1));
-            if (!args.empty()) {
-                args[0] = ClampIntTiming(args[0], line, "arctap", diagnostics);
-            }
+        call.suffix = RewriteArcTapSuffix(call.suffix, [&](std::vector<std::string> args) {
+            if (!args.empty()) args[0] = ClampIntTiming(args[0], line, "arctap", diagnostics);
             if (args.size() > 1) {
                 AddDiag(diagnostics, line, "arctap", "REWRITTEN",
                         "official arctap accepts timing only");
                 args.resize(1);
             }
-            out += "arctap(";
-            out += JoinArgs(args);
-            out.push_back(')');
-            i = close + 1;
-        }
-        call.suffix = std::move(out);
+            return args;
+        });
     }
     return EmitCall(call);
 }
@@ -652,13 +637,12 @@ std::optional<std::string> InlineReference(std::string_view command, std::string
                                            std::string_view from_file, int64_t offset, int line,
                                            NormalizeState &state) {
     if (!state.files) {
-        AddDiag(*state.diagnostics, line, std::string(command), "DROPPED_COMMAND",
+        AddDiag(*state.diagnostics, line, command, "DROPPED_COMMAND",
                 "include/fragment requires package files");
         return std::nullopt;
     }
     if (state.depth >= cfg::custom_charts::kMaxAffIncludeDepth) {
-        AddDiag(*state.diagnostics, line, std::string(path_arg), "DROPPED_COMMAND",
-                "include depth limit");
+        AddDiag(*state.diagnostics, line, path_arg, "DROPPED_COMMAND", "include depth limit");
         return std::nullopt;
     }
     const std::string relative = Unquote(path_arg);
@@ -679,16 +663,14 @@ std::optional<std::string> InlineReference(std::string_view command, std::string
     state.active.erase(resolved);
     std::string body = BodyAfterHeader(nested);
     if (offset != 0) {
-        std::istringstream in{body};
-        std::string line_text;
         std::string shifted;
-        while (std::getline(in, line_text)) {
+        for (const std::string_view line_text : LinesOf(body)) {
             if (!shifted.empty()) shifted.push_back('\n');
             shifted += ShiftLine(line_text, offset);
         }
         body = std::move(shifted);
     }
-    AddDiag(*state.diagnostics, line, relative, "INLINED", std::string(command));
+    AddDiag(*state.diagnostics, line, relative, "INLINED", command);
     return body;
 }
 
@@ -700,20 +682,17 @@ std::string NormalizeDocument(std::string_view text, std::string_view source_nam
         static_cast<unsigned char>(buffer[2]) == 0xBF) {
         buffer.erase(0, 3);
     }
-    std::istringstream in{buffer};
-    std::string line;
     std::string out;
     bool header = true;
     int line_number = 0;
     int open_groups = 0;
-    auto append = [&](const std::string &text_line) {
+    auto append = [&](std::string_view text_line) {
         if (!out.empty()) out.push_back('\n');
         out += text_line;
     };
-    while (std::getline(in, line)) {
+    for (const std::string_view line : LinesOf(buffer)) {
         ++line_number;
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        const std::string trimmed = Trim(line);
+        const std::string_view trimmed = TrimView(line);
         if (trimmed.empty()) continue;
         if (header) {
             if (trimmed == "-") {
@@ -721,50 +700,47 @@ std::string NormalizeDocument(std::string_view text, std::string_view source_nam
                 header = false;
                 continue;
             }
-            const bool looks_like_event = trimmed.find('(') != std::string::npos ||
-                                          trimmed.starts_with("};");
+            const bool looks_like_event = trimmed.contains('(') || trimmed.starts_with("};");
             if (looks_like_event) {
                 append("AudioOffset:0");
                 append("-");
                 header = false;
-                AddDiag(*state.diagnostics, line_number, std::string(source_name), "REWRITTEN",
+                AddDiag(*state.diagnostics, line_number, source_name, "REWRITTEN",
                         "inserted missing AFF header terminator");
             } else {
                 const size_t colon = trimmed.find(':');
-                if (colon == std::string::npos) {
+                if (colon == std::string_view::npos) {
                     AddDiag(*state.diagnostics, line_number, trimmed, "DROPPED_HEADER",
                             "invalid header line");
                     continue;
                 }
-                const std::string key = Trim(trimmed.substr(0, colon));
-                const std::string value = Trim(trimmed.substr(colon + 1));
-                double header_number = 0;
-                if (key == "AudioOffset") {
-                    if (!ParseDouble(value, header_number)) {
-                        AddDiag(*state.diagnostics, line_number, key, "DROPPED_HEADER",
-                                "invalid AudioOffset value");
-                        continue;
-                    }
-                    append("AudioOffset:" + value);
-                } else if (key == "TimingPointDensityFactor" || key == "TimingPointsDensityFactor") {
-                    if (!ParseDouble(value, header_number)) {
-                        AddDiag(*state.diagnostics, line_number, key, "DROPPED_HEADER",
-                                "invalid density factor value");
-                        continue;
-                    }
-                    if (key == "TimingPointsDensityFactor") {
-                        AddDiag(*state.diagnostics, line_number, key, "REWRITTEN",
-                                "TimingPointDensityFactor");
-                    }
-                    append("TimingPointDensityFactor:" + value);
-                } else {
+                const std::string_view key = TrimView(trimmed.substr(0, colon));
+                const std::string_view value = TrimView(trimmed.substr(colon + 1));
+                // Both density spellings exist in the wild; the official key wins.
+                const bool density = key == "TimingPointDensityFactor" ||
+                                     key == "TimingPointsDensityFactor";
+                const bool audio_offset = key == "AudioOffset";
+                if (!density && !audio_offset) {
                     AddDiag(*state.diagnostics, line_number, key, "DROPPED_HEADER",
                             "unknown AFF header");
+                    continue;
                 }
+                double header_number = 0;
+                if (!ParseDouble(value, header_number)) {
+                    AddDiag(*state.diagnostics, line_number, key, "DROPPED_HEADER",
+                            audio_offset ? "invalid AudioOffset value"
+                                         : "invalid density factor value");
+                    continue;
+                }
+                if (key == "TimingPointsDensityFactor") {
+                    AddDiag(*state.diagnostics, line_number, key, "REWRITTEN",
+                            "TimingPointDensityFactor");
+                }
+                append(std::format("{}:{}", density ? "TimingPointDensityFactor" : key, value));
                 continue;
             }
         }
-        if (trimmed[0] == '#') {
+        if (trimmed.front() == '#') {
             AddDiag(*state.diagnostics, line_number, trimmed, "DROPPED_COMMAND", "comment");
             continue;
         }
@@ -836,13 +812,13 @@ std::string NormalizeDocument(std::string_view text, std::string_view source_nam
     if (header) {
         if (out.empty()) append("AudioOffset:0");
         append("-");
-        AddDiag(*state.diagnostics, line_number, std::string(source_name), "REWRITTEN",
+        AddDiag(*state.diagnostics, line_number, source_name, "REWRITTEN",
                 "inserted missing AFF header terminator");
     }
     while (open_groups > 0) {
         append("};");
         --open_groups;
-        AddDiag(*state.diagnostics, line_number, std::string(source_name), "REWRITTEN",
+        AddDiag(*state.diagnostics, line_number, source_name, "REWRITTEN",
                 "closed unclosed timinggroup");
     }
     if (!out.empty() && out.back() != '\n') out.push_back('\n');

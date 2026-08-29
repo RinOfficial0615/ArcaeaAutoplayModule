@@ -5,6 +5,8 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <span>
+#include <string_view>
 
 #include "config/ModuleConfig.h"
 #include "manager/GameVersionManager.hpp"
@@ -196,13 +198,12 @@ static void CopyUrlPath(const char *url, char *out, size_t out_size) {
         return;
     }
 
-    const size_t path_end = value.find_first_of("?#", path_start);
-    const size_t path_length = (path_end == std::string_view::npos)
-                                   ? value.size() - path_start
-                                   : path_end - path_start;
-    const size_t copy_length = std::min(path_length, out_size - 1);
-    std::memcpy(out, value.data() + path_start, copy_length);
-    out[copy_length] = '\0';
+    // "No query and no fragment" comes back as npos, which substr already
+    // reads as "to the end"; copy() then clamps the path into the fixed output
+    // buffer and reports how many bytes it wrote so we can terminate.
+    const std::string_view path = value.substr(path_start);
+    const size_t copied = path.substr(0, path.find_first_of("?#")).copy(out, out_size - 1);
+    out[copied] = '\0';
 }
 
 static void NormalizeHandlerStrings(network::HandlerArgs &args) {
@@ -224,8 +225,7 @@ std::string NetworkManager::EscapeBytesForLog(const uint8_t *data, size_t len) {
         return (v < 10) ? static_cast<char>('0' + v) : static_cast<char>('A' + (v - 10));
     };
 
-    for (size_t i = 0; i < bounded_len; ++i) {
-        const uint8_t b = data[i];
+    for (const uint8_t b : std::span(data, bounded_len)) {
         switch (b) {
         case '\\':
             out.push_back('\\');

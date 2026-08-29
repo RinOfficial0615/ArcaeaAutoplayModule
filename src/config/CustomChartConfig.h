@@ -4,6 +4,8 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <iterator>
 #include <string>
 #include <string_view>
 
@@ -82,13 +84,26 @@ inline constexpr std::string_view kBackgroundAssetPrefix = "img/bg/1080/";
 inline constexpr std::array<std::string_view, 3> kAssetPathPrefixes = {
     "file:///android_asset/", "Resources/", "assets/",
 };
-inline constexpr std::array<const char *, 2> kAudioFileNames = {"base.ogg", "base.wav"};
-inline constexpr std::array<const char *, 3> kJacketFileNames = {
+inline constexpr std::array<std::string_view, 2> kAudioFileNames = {"base.ogg", "base.wav"};
+inline constexpr std::array<std::string_view, 3> kJacketFileNames = {
     "base.jpg", "base.png", "base.jpeg",
 };
 inline constexpr const char *kAudioAssetName = "base.ogg";
 inline constexpr const char *kJacketAssetName = "base.jpg";
 inline constexpr const char *kJacket256AssetName = "base_256.jpg";
+
+// Extension sets shared by the importer's asset discovery. Array order is the
+// probe order, so an `.ogg` beats a `.wav` and a `.jpg` beats a `.jpeg`.
+inline constexpr std::string_view kChartFileExtension = ".aff";
+inline constexpr std::array<std::string_view, 1> kChartFileExtensions = {".aff"};
+inline constexpr std::array<std::string_view, 2> kAudioFileExtensions = {".ogg", ".wav"};
+inline constexpr std::array<std::string_view, 3> kImageFileExtensions = {".jpg", ".jpeg", ".png"};
+
+// Raw chart packages carry song metadata either as `songlist` (the name the
+// game itself uses for its own asset) or as `songlist.json`. The extension-less
+// spelling wins when a package ships both.
+inline constexpr std::string_view kSonglistMetadataFile = "songlist";
+inline constexpr std::string_view kSonglistMetadataJsonFile = "songlist.json";
 
 // Logical AAsset path used by PST/PRS/FTR and by the custom Beyond hook
 // that replaces sub_A74680's writable-dir {id}_{n} pack name.
@@ -97,9 +112,9 @@ inline std::string LocalChartAssetPath(std::string_view song_id, size_t difficul
     path.reserve(kSongsPrefix.size() + song_id.size() + 8);
     path.append(kSongsPrefix);
     path.append(song_id);
-    path.push_back('/');
-    path.append(std::to_string(difficulty));
-    path.append(".aff");
+    // format_to appends straight into the reserved buffer, so the difficulty
+    // never round-trips through a temporary std::string the way to_string would.
+    std::format_to(std::back_inserter(path), "/{}.aff", difficulty);
     return path;
 }
 inline constexpr const char *kExtractedAudioStem = "/base";

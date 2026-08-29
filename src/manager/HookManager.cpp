@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cinttypes>
 #include <cstring>
+#include <ranges>
 #if defined(__ANDROID__)
 #include <dlfcn.h>
 #endif
@@ -227,7 +228,10 @@ HookManager::InlineHookRegistration HookManager::RegisterInlineHookAbsoluteImpl(
 
 bool HookManager::CommitInlineHook(std::span<InlineHookRegistration> registrations) {
     std::scoped_lock mutation_lock(mutation_mutex_);
-    for (size_t i = 0; i < registrations.size(); ++i) {
+    // The index is still needed — the conflict check below only looks at the
+    // entries before it — but first(i) says "already accepted" more plainly
+    // than an inner `j < i` counter.
+    for (const size_t i : std::views::iota(size_t{0}, registrations.size())) {
         const auto &registration = registrations[i];
         if (registration.owner_ != this ||
             (registration.state_ != InlineHookRegistration::State::Pending &&
@@ -236,8 +240,7 @@ bool HookManager::CommitInlineHook(std::span<InlineHookRegistration> registratio
             return false;
         }
         if (registration.state_ == InlineHookRegistration::State::Committed) continue;
-        for (size_t j = 0; j < i; ++j) {
-            const auto &previous = registrations[j];
+        for (const auto &previous : registrations.first(i)) {
             if (previous.state_ == InlineHookRegistration::State::Committed) continue;
             if (previous.target_addr_ == registration.target_addr_ ||
                 previous.hook_handler_ == registration.hook_handler_) {
@@ -379,36 +382,29 @@ bool HookManager::RollbackRegistration(InlineHookRegistration &registration) {
 bool HookManager::RetryPendingRollbacks() {
     std::scoped_lock mutation_lock(mutation_mutex_);
     std::unique_lock records_lock(records_mutex_);
+    // The predicate is the recovery attempt: a stub that restores is erased, one
+    // that fails stays recorded so the next retry can try again.
     bool restored_all = true;
-    for (auto iter = inline_hooks_.begin(); iter != inline_hooks_.end();) {
-        if (!iter->rollback_pending) {
-            ++iter;
-            continue;
-        }
-        if (!mem::InlineHook::RestoreA64(iter->stub)) {
+    std::erase_if(inline_hooks_, [&](const InlineHookRecord &record) {
+        if (!record.rollback_pending) return false;
+        if (!mem::InlineHook::RestoreA64(record.stub)) {
             restored_all = false;
-            ++iter;
-            continue;
+            return false;
         }
-        ARC_LOGI("Recovered pending rollback @ %p",
-                 reinterpret_cast<void *>(iter->target_addr));
-        iter = inline_hooks_.erase(iter);
-    }
+        ARC_LOGI("Recovered pending rollback @ %p", reinterpret_cast<void *>(record.target_addr));
+        return true;
+    });
     return restored_all;
 }
 
 const HookManager::InlineHookRecord *HookManager::FindHookRecordByHook(void *hook_handler) const {
-    auto it = std::ranges::find_if(inline_hooks_, [hook_handler](const auto &rec) {
-        return rec.hook_handler == hook_handler;
-    });
-    return it != inline_hooks_.end() ? &(*it) : nullptr;
+    return FindHookRecord(
+        [hook_handler](const auto &rec) { return rec.hook_handler == hook_handler; });
 }
 
 const HookManager::InlineHookRecord *HookManager::FindHookRecordByTarget(uintptr_t target_addr) const {
-    auto it = std::ranges::find_if(inline_hooks_, [target_addr](const auto &rec) {
-        return rec.target_addr == target_addr;
-    });
-    return it != inline_hooks_.end() ? &(*it) : nullptr;
+    return FindHookRecord(
+        [target_addr](const auto &rec) { return rec.target_addr == target_addr; });
 }
 
 bool HookManager::HasOriginalForHook(void *hook_handler) const {

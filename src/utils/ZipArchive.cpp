@@ -4,9 +4,11 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <string_view>
 #include <thread>
 
 #include <zlib.h>
@@ -28,12 +30,9 @@ uint32_t U32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+// An all-separator name yields npos, and npos + 1 is 0 -- i.e. the empty name.
 std::string TrimTrailingSlashes(std::string_view raw) {
-    std::string trimmed(raw);
-    while (!trimmed.empty() && (trimmed.back() == '/' || trimmed.back() == '\\')) {
-        trimmed.pop_back();
-    }
-    return trimmed;
+    return std::string(raw.substr(0, raw.find_last_not_of("/\\") + 1));
 }
 
 } // namespace
@@ -44,7 +43,7 @@ bool Archive::NormalizePath(std::string_view input, std::string &output) {
     std::string component;
     auto flush = [&]() -> bool {
         if (component.empty() || component == "." || component == "..") return false;
-        if (component.find(':') != std::string::npos || component.find('\0') != std::string::npos) return false;
+        if (component.contains(':') || component.contains('\0')) return false;
         if (!output.empty()) output.push_back('/');
         output += component;
         component.clear();
@@ -196,7 +195,7 @@ bool Archive::Extract(const Entry &entry, std::vector<uint8_t> &out, std::string
     const uint8_t *source = bytes_.data() + data_offset;
     if (entry.method == 0) {
         if (entry.compressed_size != entry.uncompressed_size) { error = "stored size mismatch"; return false; }
-        std::copy(source, source + entry.compressed_size, out.begin());
+        std::ranges::copy_n(source, entry.compressed_size, out.begin());
     } else {
         z_stream stream{};
         stream.next_in = const_cast<Bytef *>(source);
@@ -225,8 +224,7 @@ bool Archive::ExtractToFile(const Entry &entry, const std::string &path, std::st
     static std::atomic_uint64_t temporary_sequence{0};
     const auto thread_hash = std::hash<std::thread::id>{}(std::this_thread::get_id());
     const auto sequence = temporary_sequence.fetch_add(1, std::memory_order_relaxed);
-    const std::string tmp = path + ".tmp." + std::to_string(thread_hash) + "." +
-                            std::to_string(sequence);
+    const std::string tmp = std::format("{}.tmp.{}.{}", path, thread_hash, sequence);
     const auto cleanup = [&] {
         std::error_code cleanup_ec;
         std::filesystem::remove(tmp, cleanup_ec);

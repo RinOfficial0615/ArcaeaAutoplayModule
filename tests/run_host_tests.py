@@ -5,9 +5,12 @@ import shutil
 import json
 import subprocess
 import zipfile
-import os
-import re
+import sys
 
+# Import the sibling helper by path so this runs both as
+# `python tests/run_host_tests.py` and `python -m tests.run_host_tests`.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import toolchain_probe
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
@@ -16,78 +19,31 @@ MAGIC_ENUM_INCLUDE = ROOT / "third_party" / "magic_enum" / "include"
 BUILD.mkdir(parents=True, exist_ok=True)
 
 
-def _version_key(path: pathlib.Path) -> tuple[int, ...]:
-    numbers = re.findall(r"\d+", path.name)
-    return tuple(int(number) for number in numbers) or (0,)
-
-
-def _find_ndk_clang() -> str:
-    roots: list[pathlib.Path] = []
-    for variable in ("ANDROID_NDK_ROOT", "ANDROID_NDK_HOME"):
-        value = os.environ.get(variable)
-        if value:
-            roots.append(pathlib.Path(value))
-    roots.extend(
-        pathlib.Path(path)
-        for path in (
-            r"D:\android_sdk\ndk",
-            pathlib.Path.home() / "AppData/Local/Android/Sdk/ndk",
-            pathlib.Path.home() / "Android/Sdk/ndk",
-            pathlib.Path("/opt/android-sdk/ndk"),
-        )
-    )
-
-    candidates: list[tuple[tuple[int, ...], pathlib.Path]] = []
-    for root in roots:
-        if root.is_file():
-            candidates.append((_version_key(root), root))
-            continue
-        if not root.is_dir():
-            continue
-        ndk_dirs = [root] if (root / "source.properties").is_file() else [
-            ndk for ndk in root.iterdir() if ndk.is_dir()
-        ]
-        for ndk in ndk_dirs:
-            if not ndk.is_dir():
-                continue
-            for host in ("windows-x86_64", "linux-x86_64", "darwin-x86_64"):
-                suffix = "clang++.exe" if host.startswith("windows") else "clang++"
-                compiler = ndk / "toolchains" / "llvm" / "prebuilt" / host / "bin" / suffix
-                if compiler.is_file():
-                    candidates.append((_version_key(ndk), compiler))
-
-    if not candidates:
-        raise SystemExit(
-            "No NDK clang++ found. Set ANDROID_NDK_ROOT or install an NDK; "
-            "host tests intentionally do not fall back to g++."
-        )
-    return str(max(candidates, key=lambda candidate: (candidate[0], str(candidate[1])))[1])
-
-
-CXX = _find_ndk_clang()
+CXX = toolchain_probe.find_ndk_clang()
 print(f"using NDK clang++: {CXX}")
 
 
-def _find_winpthread() -> pathlib.Path:
-    candidates = []
-    if os.environ.get("MINGW_PREFIX"):
-        candidates.append(pathlib.Path(os.environ["MINGW_PREFIX"]) / "lib" / "libwinpthread.a")
-    candidates.extend(
-        pathlib.Path(path)
-        for path in (
-            r"C:\Strawberry\c\x86_64-w64-mingw32\lib\libwinpthread.a",
-            r"C:\msys64\mingw64\x86_64-w64-mingw32\lib\libwinpthread.a",
-        )
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise SystemExit(
-        "NDK clang++ was found, but libwinpthread.a is missing; install a MinGW host runtime."
-    )
+# ---------------------------------------------------------------------------
+# Host toolchain: NDK clang++ driving the MSVC STL. See toolchain_probe.py for
+# how the pieces are located and why the MSVC STL rather than the NDK's own
+# MinGW libstdc++.
+#
+# The Android build keeps using the vendored third_party/libcxx, so src/ has
+# to stay inside the intersection of the two. check_production_conformance()
+# enforces that by compiling every first-party source against the vendored
+# libcxx for arm64 -- a feature only MSVC has then fails the host run instead
+# of the release build. See docs/cpp/toolchain.md.
+# ---------------------------------------------------------------------------
 
 
-HOST_LINK_ARGS = ["-L", str(_find_winpthread().parent), "-lwinpthread"]
+def _remove_source_package(path: pathlib.Path) -> None:
+    """Drop a fixture from the scanned charts directory."""
+    path.unlink()
+
+
+# MSVC's STL hard-rejects clang older than 20; NDK 27 (clang 18) fails outright.
+HOST_COMPILE_ARGS, HOST_LINK_ARGS = toolchain_probe.host_toolchain_args()
+print(f"using MSVC STL: {toolchain_probe.find_visual_studio()}")
 
 RYML_SOURCES = [
     ROOT / "third_party" / "rapidyaml" / "ext" / "c4core.src" / "c4" / "base64.cpp",
@@ -121,6 +77,8 @@ def compile_ryml_objects() -> list[pathlib.Path]:
         subprocess.run(
             [
                 CXX,
+                # Compile-only: no linker args, so no .lib or -L noise on -c.
+                *HOST_COMPILE_ARGS,
                 "-std=c++23",
                 "-O2",
                 "-c",
@@ -143,15 +101,13 @@ ryml_objects = compile_ryml_objects()
 exe = BUILD / "host_tests.exe"
 compile_cmd = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-DARC_HELPER_HOST_TEST",
     "-I",
     str(ROOT / "tests" / "stubs"),
@@ -167,7 +123,6 @@ compile_cmd = [
     str(ROOT / "src" / "utils" / "Sha256.cpp"),
     str(ROOT / "src" / "utils" / "ZipArchive.cpp"),
     str(ROOT / "src" / "utils" / "Log.cpp"),
-    "-lz",
     "-o",
     str(exe),
 ]
@@ -176,15 +131,13 @@ subprocess.run(compile_cmd, check=True, cwd=ROOT)
 network_block_exe = BUILD / "network_block_host_test.exe"
 network_block_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-I",
     str(ROOT / "tests" / "stubs"),
     "-I",
@@ -202,15 +155,13 @@ print("validated ordinary block matching and custom-chart isolation policy")
 config_manager_exe = BUILD / "config_manager_host_test.exe"
 config_manager_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-DARC_HELPER_HOST_TEST",
     "-I",
     str(ROOT / "tests" / "stubs"),
@@ -236,15 +187,13 @@ print("validated inferred feature config, fallback normalization, and atomic sav
 logger_exe = BUILD / "logger_host_test.exe"
 logger_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-DARC_HELPER_HOST_TEST",
     "-I",
     str(ROOT / "tests" / "stubs"),
@@ -269,15 +218,13 @@ print("validated logger source format, UTF-8 truncation, full file output, and r
 hook_manager_exe = BUILD / "hook_manager_host_test.exe"
 hook_manager_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-I",
     str(ROOT / "tests" / "stubs"),
     "-I",
@@ -287,7 +234,8 @@ hook_manager_compile = [
     str(ROOT / "tests" / "hook_manager_host_test.cpp"),
     str(ROOT / "src" / "manager" / "HookManager.cpp"),
     str(ROOT / "src" / "utils" / "Log.cpp"),
-    "-ldl",
+    # No -ldl: dlopen is a POSIX-only concern and the Windows host runtimes
+    # have no such import library; the hook manager tests use the stubs.
     "-o",
     str(hook_manager_exe),
 ]
@@ -298,15 +246,13 @@ print("validated inline-hook register/commit rollback and destructor recovery")
 memory_patch_exe = BUILD / "memory_patch_host_test.exe"
 memory_patch_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-I",
     str(ROOT / "tests" / "stubs"),
     "-I",
@@ -325,15 +271,13 @@ print("validated runtime memory range checks and patch transaction rollback")
 proc_maps_exe = BUILD / "proc_maps_host_test.exe"
 proc_maps_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-I",
     str(ROOT / "tests" / "stubs"),
     "-I",
@@ -351,15 +295,13 @@ aff_normalizer_exe = BUILD / "aff_normalizer_host_test.exe"
 subprocess.run(
     [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-I",
         str(ROOT / "src"),
         "-I",
@@ -380,15 +322,13 @@ official_parser_exe = BUILD / "aff_official_parser_host_test.exe"
 subprocess.run(
     [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-I",
         str(ROOT / "src"),
         "-I",
@@ -409,15 +349,13 @@ songlist_snapshot_exe = BUILD / "songlist_snapshot_host_test.exe"
 subprocess.run(
     [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-I",
         str(ROOT / "src"),
         "-I",
@@ -440,15 +378,13 @@ image_raster_exe = BUILD / "image_raster_host_test.exe"
 subprocess.run(
     [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-I",
         str(ROOT / "src"),
         "-I",
@@ -468,15 +404,13 @@ yaml_exe = BUILD / "arc_package_format_host_test.exe"
 subprocess.run(
     [
         CXX,
+        *HOST_COMPILE_ARGS,
         *HOST_LINK_ARGS,
         "-std=c++23",
         "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-static",
-        "-static-libgcc",
-        "-static-libstdc++",
         "-DC4_NO_DEBUG_BREAK",
         "-DC4_USE_ASSERT=0",
         "-I",
@@ -601,6 +535,47 @@ with zipfile.ZipFile(charts_dir / "bounded-arc.arcpkg", "w", zipfile.ZIP_DEFLATE
     archive.writestr("bounded/base.ogg", b"OggS-host-test")
     archive.writestr("bounded/2.aff", "AudioOffset:0\n-\ntiming(0,120,4);\n")
 
+# A raw package may ship its metadata as `songlist` (the spelling the game uses
+# for its own asset) or as `songlist.json`. On its own either one must work.
+with zipfile.ZipFile(charts_dir / "songlist-plain.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr(
+        "songlist",
+        json.dumps({
+            "songs": [{
+                "id": "plain_only",
+                "title_localized": {"en": "Plain Songlist"},
+                "artist": "Plain Artist",
+                "bpm_base": 132,
+            }],
+        }),
+    )
+    archive.writestr("base.ogg", b"OggS-host-test")
+    archive.writestr("2.aff", "AudioOffset:0\n-\ntiming(0,132,4);\n")
+
+# When both spellings are present the importer must warn and keep `songlist`,
+# so the same archive can never import differently depending on entry order.
+with zipfile.ZipFile(charts_dir / "songlist-conflict.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr(
+        "songlist",
+        json.dumps({
+            "songs": [{
+                "id": "conflict_winner",
+                "title_localized": {"en": "Conflict Winner"},
+            }],
+        }),
+    )
+    archive.writestr(
+        "songlist.json",
+        json.dumps({
+            "songs": [{
+                "id": "conflict_loser",
+                "title_localized": {"en": "Conflict Loser"},
+            }],
+        }),
+    )
+    archive.writestr("base.ogg", b"OggS-host-test")
+    archive.writestr("2.aff", "AudioOffset:0\n-\ntiming(0,140,4);\n")
+
 # Content-addressed IDs must not make a byte-identical package imported under a
 # second filename invalidate the whole snapshot.
 shutil.copyfile(charts_dir / "bounded-arc.arcpkg", charts_dir / "duplicate-content.arcpkg")
@@ -612,15 +587,13 @@ with zipfile.ZipFile(charts_dir / "oversized-text.zip", "w", zipfile.ZIP_STORED)
 importer_exe = BUILD / "importer_host_test.exe"
 import_compile = [
     CXX,
+    *HOST_COMPILE_ARGS,
     *HOST_LINK_ARGS,
     "-std=c++23",
     "-O2",
     "-Wall",
     "-Wextra",
     "-Werror",
-    "-static",
-    "-static-libgcc",
-    "-static-libstdc++",
     "-DARC_HELPER_HOST_TEST",
     "-I",
     str(ROOT / "tests" / "stubs"),
@@ -638,7 +611,6 @@ import_compile = [
     "-DC4_NO_DEBUG_BREAK",
     "-DC4_USE_ASSERT=0",
     str(ROOT / "tests" / "importer_host_test.cpp"),
-    str(ROOT / "tests" / "asset_virtualizer_stub.cpp"),
     str(ROOT / "src" / "manager" / "CustomChartManager.cpp"),
     str(ROOT / "src" / "manager" / "custom_chart" / "CustomChartImporter.cpp"),
     str(ROOT / "src" / "manager" / "custom_chart" / "ArcPackageFormat.cpp"),
@@ -651,7 +623,6 @@ import_compile = [
     str(ROOT / "src" / "utils" / "ZipArchive.cpp"),
     str(ROOT / "src" / "utils" / "ImageRaster.cpp"),
     *map(str, ryml_objects),
-    "-lz",
     "-o",
     str(importer_exe),
 ]
@@ -686,10 +657,132 @@ assert {"5.aff", "6.aff"} <= skipped_charts, skipped_charts
 print("validated multi-package import, broken JSON fallback, defaults, cache, and reports")
 
 # Removing a source package must remove its song and orphaned content-addressed cache.
-(charts_dir / "package-6.zip").unlink()
+_remove_source_package(charts_dir / "package-6.zip")
 subprocess.run([str(importer_exe), str(import_root)], check=True, cwd=ROOT)
 manifest_after_delete = json.loads((import_root / "manifest.json").read_text(encoding="utf-8"))
 assert manifest_after_delete["songs"] < song_count_before_delete
 cache_dirs = [path for path in (import_root / "cache").iterdir() if path.is_dir()]
 assert len(cache_dirs) < cache_count_before_delete, cache_dirs
 print("validated source deletion and orphan cache cleanup")
+
+
+# ---------------------------------------------------------------------------
+# Production conformance.
+#
+# Host tests build against the MSVC STL, which is a *wider* library than the
+# vendored third_party/libcxx the Android build actually ships. Without this
+# gate, a feature MSVC has and libcxx does not (views::enumerate, chunk,
+# slide, join_with, fold_right, cartesian_product) would pass here and then
+# break the release build -- the exact failure this is meant to catch.
+#
+# Compiling every first-party source for arm64 against the vendored libcxx is
+# the cheapest check that still uses the real production flags.
+# ---------------------------------------------------------------------------
+
+# Only the hooking engines need headers outside src/ and third_party/*.
+CONFORMANCE_INCLUDES = [
+    "-I", str(ROOT / "third_party" / "lsplt" / "lsplt" / "src" / "main" / "jni" / "include"),
+    "-I", str(ROOT / "third_party" / "shadowhook" / "shadowhook" / "src" / "main" / "cpp" / "include"),
+]
+VENDORED_LIBCXX_INCLUDE = ROOT / "third_party" / "libcxx" / "include"
+
+
+def check_production_conformance() -> None:
+    if not (VENDORED_LIBCXX_INCLUDE / "__config").is_file():
+        raise SystemExit(
+            f"Missing {VENDORED_LIBCXX_INCLUDE}; run 'git submodule update --init --recursive'."
+        )
+    sources = sorted((ROOT / "src").rglob("*.cpp"))
+    if not sources:
+        raise SystemExit("No first-party sources under src/ to check.")
+
+    failures: list[str] = []
+    for source in sources:
+        result = subprocess.run(
+            [
+                CXX,
+                "--target=aarch64-linux-android21",
+                # Mirrors APP_CPPFLAGS in Application.mk.
+                "-std=c++23",
+                "-fno-exceptions",
+                "-fno-rtti",
+                "-fvisibility=hidden",
+                "-fvisibility-inlines-hidden",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-O2",
+                "-c",
+                "-nostdinc++",
+                "-isystem",
+                str(VENDORED_LIBCXX_INCLUDE),
+                "-D_LIBCPP_NO_EXCEPTIONS",
+                "-D_LIBCPP_NO_RTTI",
+                "-DJSON_NOEXCEPTION",
+                # Same as Android.mk: rapidyaml's std_fwd.hpp sniffs the standard
+                # library from these, and they are not implied by -nostdinc++.
+                "-D_LIBCPP_ABI_NAMESPACE=_LIBCPP_ABI_NAMESPACE",
+                "-include",
+                "vector",
+                "-DC4_NO_DEBUG_BREAK",
+                "-DC4_USE_ASSERT=0",
+                "-I",
+                str(ROOT / "src"),
+                "-I",
+                str(MAGIC_ENUM_INCLUDE),
+                "-I",
+                str(ROOT / "third_party" / "json" / "include"),
+                "-I",
+                str(ROOT / "third_party"),
+                "-isystem",
+                str(ROOT / "third_party" / "rapidyaml" / "src"),
+                "-isystem",
+                str(ROOT / "third_party" / "rapidyaml" / "ext" / "c4core.src"),
+                *CONFORMANCE_INCLUDES,
+                str(source),
+                "-o",
+                str(BUILD / "conformance.o"),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=ROOT,
+        )
+        if result.returncode != 0:
+            failures.append(f"{source.relative_to(ROOT)}:\n{result.stderr.strip()[:1500]}")
+
+    if failures:
+        raise SystemExit(
+            "Production conformance failed -- these sources use a feature the "
+            "Android build's vendored libcxx does not have "
+            "(see docs/cpp/feature-matrix.md):\n\n" + "\n\n".join(failures)
+        )
+
+    # Compiling is not linking, and std::format is the case that proves it:
+    # __visit_format_arg switches on the *runtime* type of basic_format_arg, so
+    # formatter<double>/formatter<float> get instantiated for every format call
+    # even when no floating-point argument is ever passed. Every source above
+    # therefore compiles cleanly while the release link needs libcxx's Ryu
+    # implementation. This only bites if the vendored Android.mk stops building
+    # it, which a per-file compile can never notice.
+    if any("std::format" in s.read_text(encoding="utf-8", errors="ignore") for s in sources):
+        android_mk = ROOT / "Android.mk"
+        mk_text = android_mk.read_text(encoding="utf-8")
+        missing = [
+            name
+            for name in ("libcxx_ryu", "third_party/libcxx/src/ryu/d2s.cpp")
+            if name not in mk_text
+        ]
+        if missing:
+            raise SystemExit(
+                f"{android_mk.name} no longer builds libc++'s Ryu sources "
+                f"(missing: {', '.join(missing)}), but src/ uses std::format. "
+                "The release link will fail with undefined "
+                "__d2s/__d2exp/__d2fixed/__f2s symbols. "
+                "See docs/cpp/build-pitfalls.md."
+            )
+
+    print(f"validated production conformance: {len(sources)} sources, vendored libcxx")
+
+
+check_production_conformance()

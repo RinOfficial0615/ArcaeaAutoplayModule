@@ -74,6 +74,7 @@ private:
     Result Failure(MemoryError error, size_t descriptor_index, uintptr_t address);
 
     std::expected<void, MemoryError> CapturePages(uintptr_t address, size_t size);
+    std::expected<void, MemoryError> MakePagesWritable();
     std::expected<void, MemoryError> PrepareWritablePages();
     bool RestorePages();
     bool RollbackApplied();

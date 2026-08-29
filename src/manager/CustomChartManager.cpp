@@ -1,5 +1,6 @@
 #include "manager/CustomChartManager.hpp"
 
+#include <ranges>
 #include <utility>
 
 #include "manager/custom_chart/CustomChartImporter.hpp"
@@ -53,15 +54,17 @@ std::vector<std::string> CustomChartManager::ListAssetDirectory(std::string_view
 }
 
 std::vector<std::string> CustomChartManager::ListSongIdsForDifficulty(int difficulty) const {
-    std::vector<std::string> result;
-    if (difficulty < 0 ||
-        difficulty >= static_cast<int>(cfg::custom_charts::kDifficultyCount)) {
-        return result;
+    // in_range rejects a negative difficulty and anything that will not fit in
+    // a size_t in one step, so the slot index needs no further guarding.
+    if (!std::in_range<size_t>(difficulty) ||
+        static_cast<size_t>(difficulty) >= cfg::custom_charts::kDifficultyCount) {
+        return {};
     }
-    for (const auto &song : snapshot_.songs) {
-        if (song.has_chart[static_cast<size_t>(difficulty)]) result.push_back(song.id);
-    }
-    return result;
+    const size_t slot = static_cast<size_t>(difficulty);
+    return snapshot_.songs |
+           std::views::filter([slot](const auto &song) { return song.has_chart[slot]; }) |
+           std::views::transform([](const auto &song) { return song.id; }) |
+           std::ranges::to<std::vector>();
 }
 
 bool CustomChartManager::IsCustomChartPath(std::string_view game_path,

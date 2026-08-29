@@ -4,7 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
-#include <cstring>
+#include <string_view>
 
 #include <magic_enum/magic_enum.hpp>
 
@@ -346,11 +346,11 @@ inline constexpr std::array<GameProfile, 6> kSupportedGameProfiles = {{
 
 consteval bool GameProfilesCoverKnownVersions() {
     for (const GameVersionId version : magic_enum::enum_values<GameVersionId>()) {
-        size_t matches = 0;
-        for (const auto &profile : kSupportedGameProfiles) {
-            if (profile.id == version) ++matches;
-        }
-        if (matches != (version == GameVersionId::kUnknown ? 0u : 1u)) return false;
+        // count_if returns a signed difference type, so the expected count must
+        // be signed too or -Wsign-compare rejects the comparison.
+        const auto matches = std::ranges::count_if(
+            kSupportedGameProfiles, [version](const auto &profile) { return profile.id == version; });
+        if (matches != (version == GameVersionId::kUnknown ? 0 : 1)) return false;
     }
     return true;
 }
@@ -358,13 +358,17 @@ consteval bool GameProfilesCoverKnownVersions() {
 static_assert(GameProfilesCoverKnownVersions(),
               "each known game version must have exactly one profile");
 
+// Either pointer may legitimately be null: an unread version string, or a
+// profile that carries no name. Building a string_view from nullptr is UB, so
+// the pointers are checked before being viewed; the comparison itself is then
+// a plain value compare rather than a byte scan.
 inline bool GameVersionMatches(const char *actual, const char *expected) {
-    return actual && expected && std::strcmp(actual, expected) == 0;
+    return actual && expected && std::string_view(actual) == std::string_view(expected);
 }
 
 inline const GameProfile *FindGameProfileByVersionString(const char *version) {
-    auto it = std::ranges::find_if(kSupportedGameProfiles, [version](const auto &profile) {
-        return profile.version_name && GameVersionMatches(version, profile.version_name);
+    const auto it = std::ranges::find_if(kSupportedGameProfiles, [version](const auto &profile) {
+        return GameVersionMatches(version, profile.version_name);
     });
     return it != kSupportedGameProfiles.end() ? &(*it) : nullptr;
 }

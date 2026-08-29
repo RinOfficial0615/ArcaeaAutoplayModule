@@ -1,5 +1,6 @@
 #include "manager/custom_chart/ArcPackageFormat.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <climits>
 #include <cmath>
@@ -80,16 +81,11 @@ ConstNodeRef ChildNode(ConstNodeRef node, std::string_view key) {
     return node.find_child(name);
 }
 
-std::string TrimCopy(std::string_view value) {
-    return TrimWhitespace(value);
-}
-
 int ArcSide(std::string_view value) {
-    const std::string side = TrimCopy(value);
-    std::string lower = side;
-    for (char &c : lower) {
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    }
+    std::string lower = TrimWhitespace(value);
+    std::ranges::transform(lower, lower.begin(), [](char c) {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    });
     if (lower == "light") return 0;
     if (lower == "conflict") return 1;
     if (lower == "colorless") return 2;
@@ -121,7 +117,6 @@ bool ParseYamlTree(std::string_view yaml, Tree &tree, std::string &error) {
     tree = std::move(*owned);
     tree.callbacks(c4::yml::get_callbacks());
     delete owned;
-    owned = nullptr;
     return true;
 }
 

@@ -1,5 +1,6 @@
 #include "utils/ImageRaster.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -91,14 +92,12 @@ std::optional<RasterImage> NormalizeBackgroundImage(std::span<const uint8_t> byt
     int crop_h = height;
     if (std::abs(src_aspect - dst_aspect) > 0.01) {
         if (src_aspect > dst_aspect) {
-            crop_w = static_cast<int>(std::lround(height * dst_aspect));
-            if (crop_w < 1) crop_w = 1;
-            if (crop_w > width) crop_w = width;
+            // lround can overshoot in either direction once the aspect ratios
+            // differ, so the clamp guarantees a non-empty in-bounds crop.
+            crop_w = std::clamp(static_cast<int>(std::lround(height * dst_aspect)), 1, width);
             crop_x = (width - crop_w) / 2;
         } else {
-            crop_h = static_cast<int>(std::lround(width / dst_aspect));
-            if (crop_h < 1) crop_h = 1;
-            if (crop_h > height) crop_h = height;
+            crop_h = std::clamp(static_cast<int>(std::lround(width / dst_aspect)), 1, height);
             crop_y = (height - crop_h) / 2;
         }
     }

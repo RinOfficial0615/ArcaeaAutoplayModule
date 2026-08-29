@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <string>
+#include <string_view>
 
 #include "config/NetworkBlockConfig.h"
 #include "utils/Log.h"
@@ -9,13 +10,13 @@
 namespace arc_helper {
 namespace {
 
+// The logging macros want a NUL-terminated buffer, hence the final copy; the
+// truncation itself stays on a view. substr(0, find('?')) already means "the
+// whole string" when there is no query, so the npos case needs no branch.
 std::string UrlForLog(const char *url, bool strip_query) {
-    std::string result = url && url[0] ? url : "(unknown)";
-    if (strip_query) {
-        const size_t query = result.find('?');
-        if (query != std::string::npos) result.resize(query);
-    }
-    return result;
+    std::string_view view = url && url[0] ? std::string_view(url) : "(unknown)";
+    if (strip_query) view = view.substr(0, view.find('?'));
+    return std::string(view);
 }
 
 // Shared parenthetical note for the non-Ok response body statuses.

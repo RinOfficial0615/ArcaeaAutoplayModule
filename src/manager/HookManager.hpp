@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <mutex>
@@ -184,6 +185,13 @@ private:
     bool RollbackRegistration(InlineHookRegistration &registration);
     bool RetryPendingRollbacks();
 
+    // Both public lookups differ only in which field they match, so they share
+    // one traversal; the predicate is inlined at each call site.
+    template <typename Predicate>
+    const InlineHookRecord *FindHookRecord(Predicate predicate) const {
+        const auto it = std::ranges::find_if(inline_hooks_, predicate);
+        return it != inline_hooks_.end() ? &*it : nullptr;
+    }
     const InlineHookRecord *FindHookRecordByHook(void *hook_handler) const;
     const InlineHookRecord *FindHookRecordByTarget(uintptr_t target_addr) const;
 

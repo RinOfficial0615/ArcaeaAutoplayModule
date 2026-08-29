@@ -173,10 +173,8 @@ public:
         {
             std::scoped_lock lock(mutex_);
             const nlohmann::json *object = FindObjectLocked(section, subsection);
-            if (!object) return std::nullopt;
-            const auto found = object->find(std::string(key));
-            if (found == object->end()) return std::nullopt;
-            encoded_value = *found;
+            if (!object || !object->contains(key)) return std::nullopt;
+            encoded_value = object->at(key);
         }
         T result{};
         if (!config_detail::ReadJsonValue(encoded_value, result) ||
@@ -208,15 +206,13 @@ private:
         requires config_detail::ConfigValidator<Validator, T>
     T ReadValidated(std::string_view section, std::string_view subsection,
                     std::string_view key, T default_value, Validator validator) {
-        const std::string key_string(key);
         nlohmann::json encoded_value;
         bool found_value = false;
         {
             std::scoped_lock lock(mutex_);
             nlohmann::json &object = GetObjectLocked(section, subsection);
-            const auto found = object.find(key_string);
-            if (found != object.end()) {
-                encoded_value = *found;
+            if (object.contains(key)) {
+                encoded_value = object.at(key);
                 found_value = true;
             }
         }
@@ -228,8 +224,7 @@ private:
         if (!valid) {
             result = std::move(default_value);
             std::scoped_lock lock(mutex_);
-            nlohmann::json &object = GetObjectLocked(section, subsection);
-            object[key_string] = result;
+            GetObjectLocked(section, subsection)[std::string(key)] = result;
         }
         return result;
     }

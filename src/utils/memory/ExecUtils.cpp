@@ -1,9 +1,11 @@
 #include "utils/memory/ExecUtils.hpp"
 
+#include <algorithm>
 #include <array>
-#include <cstring>
 #include <mutex>
+#include <span>
 #include <string>
+#include <string_view>
 
 #include "utils/memory/ProcMaps.hpp"
 
@@ -23,19 +25,17 @@ bool IsAddrInLibraryExec(uintptr_t addr, std::string_view soname) {
 
     std::scoped_lock lock(s_cache_mutex);
 
-    const bool same_soname = (s_soname.size() == soname.size()) &&
-                             (soname.size() == 0 || memcmp(s_soname.data(), soname.data(), soname.size()) == 0);
-    if (!s_cached || !same_soname) {
+    if (!s_cached || std::string_view(s_soname) != soname) {
         s_soname.assign(soname.data(), soname.size());
         s_exec_count = 0;
         s_cached = ProcMaps::GetLibraryExecRanges(soname, s_exec_ranges, s_exec_count);
     }
 
     const auto contains = [&] {
-        for (size_t i = 0; i < s_exec_count; ++i) {
-            if (addr >= s_exec_ranges[i].start && addr < s_exec_ranges[i].end) return true;
-        }
-        return false;
+        const std::span<MemRange> ranges(s_exec_ranges.data(), s_exec_count);
+        return std::ranges::any_of(ranges, [addr](const MemRange &range) {
+            return addr >= range.start && addr < range.end;
+        });
     };
     if (s_cached && contains()) return true;
 

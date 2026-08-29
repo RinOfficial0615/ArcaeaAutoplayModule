@@ -4,7 +4,9 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
+#include <ranges>
 #include <set>
 #include <span>
 #include <utility>
@@ -30,9 +32,8 @@ std::filesystem::path SiblingScratchPath(const std::filesystem::path &target,
                                          std::string_view purpose) {
     static std::atomic_uint64_t sequence{0};
     const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    return target.string() + ".arc-helper-" + std::string(purpose) + "-" +
-           std::to_string(timestamp) + "-" +
-           std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+    return std::format("{}.arc-helper-{}-{}-{}", target.string(), purpose, timestamp,
+                       sequence.fetch_add(1, std::memory_order_relaxed));
 }
 
 void RemoveScratchFiles(std::span<PendingWrite> writes) {
@@ -77,19 +78,19 @@ bool StageWrite(PendingWrite &write, std::string_view data, std::string &error) 
 
 bool RollbackWrites(std::span<PendingWrite> writes, std::string &error) {
     bool restored = true;
-    for (auto iter = writes.rbegin(); iter != writes.rend(); ++iter) {
+    for (auto &write : writes | std::views::reverse) {
         std::error_code ec;
-        if (iter->published) {
-            std::filesystem::remove(iter->target, ec);
+        if (write.published) {
+            std::filesystem::remove(write.target, ec);
             if (ec) restored = false;
         }
-        if (iter->had_original) {
+        if (write.had_original) {
             ec.clear();
-            std::filesystem::rename(iter->backup, iter->target, ec);
+            std::filesystem::rename(write.backup, write.target, ec);
             if (ec) restored = false;
         }
         ec.clear();
-        std::filesystem::remove(iter->temporary, ec);
+        std::filesystem::remove(write.temporary, ec);
     }
     if (!restored) error += "; report rollback incomplete";
     return restored;
@@ -135,7 +136,7 @@ bool CommitWrites(std::span<PendingWrite> writes, std::string &error) {
 bool CleanupCache(const std::string &cache_dir,
                   const std::vector<std::string> &active_hashes,
                   std::string &error) {
-    std::set<std::string> keep(active_hashes.begin(), active_hashes.end());
+    const std::set<std::string> keep(active_hashes.begin(), active_hashes.end());
     std::error_code ec;
     for (std::filesystem::directory_iterator it(cache_dir, ec), end;
          !ec && it != end; it.increment(ec)) {

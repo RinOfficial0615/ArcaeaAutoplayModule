@@ -141,9 +141,7 @@ bool GameVersionManager::EnsureInstalled() {
     }
     if (!EnsureLibBase()) return false;
 
-    for (const auto &profile : cfg::kSupportedGameProfiles) {
-        if (TryResolveFromGlobal(profile)) return true;
-    }
+    if (ResolveFromKnownProfiles()) return true;
     if (hook_installed_) return false;
 
     auto registration = hook_manager_.RegisterInlineHookSymbol(
@@ -159,10 +157,9 @@ bool GameVersionManager::EnsureInstalled() {
         return false;
     }
 
-    for (const auto &profile : cfg::kSupportedGameProfiles) {
-        if (TryResolveFromGlobal(profile)) return true;
-    }
-    return false;
+    // The hook callback fires before this returns, so the version may already
+    // be resolved by the time the second probe runs.
+    return ResolveFromKnownProfiles();
 }
 
 void GameVersionManager::OnSetAppVersion(JNIEnv *env, jobject receiver, jstring version_string) {
@@ -173,9 +170,15 @@ void GameVersionManager::OnSetAppVersion(JNIEnv *env, jobject receiver, jstring 
         TryResolveFromString(version_copy.c_str());
         return;
     }
-    for (const auto &profile : cfg::kSupportedGameProfiles) {
-        if (TryResolveFromGlobal(profile)) return;
-    }
+    ResolveFromKnownProfiles();
+}
+
+bool GameVersionManager::ResolveFromKnownProfiles() {
+    // any_of short-circuits on the first profile that resolves, which is the
+    // order the inline loops used.
+    return std::ranges::any_of(cfg::kSupportedGameProfiles, [this](const auto &profile) {
+        return TryResolveFromGlobal(profile);
+    });
 }
 
 // Locking contract: the callback runs while mutex_ is held (callers invoke

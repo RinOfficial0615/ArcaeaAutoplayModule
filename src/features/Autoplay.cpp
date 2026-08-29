@@ -1,5 +1,7 @@
 #include "features/Autoplay.hpp"
 
+#include <algorithm>
+
 #include "config/ModuleConfig.h"
 #include "utils/Log.h"
 
@@ -63,21 +65,33 @@ float Autoplay::WorldYToNdc(float y_world) const {
     return (y_world / cfg::autoplay::kTrackHeightHalf) - 1.0f;
 }
 
+// Both lookups answer "which slot", so they still return an index; the slot
+// number is derived from the iterator instead of a loop counter that has to be
+// kept in step with the array.
+//
+// No runtime test coverage: driving these needs a live game (LogicArcNote reads
+// process memory) and stubbing that costs far more than these lines are worth.
+// Verified by hand when converted to ranges::find_if. Invariants to preserve:
+//   * -1 means "not found"; callers branch on < 0, so index 0 must stay valid.
+//   * FindTouchByNote matches only occupied slots (role != None). ReleaseTouch
+//     clears role and note together so they agree today, but role is the
+//     authoritative occupancy flag -- do not drop the check as redundant.
+//   * The result indexes touch_stubs_[idx] as well as touches_[idx], so
+//     returning an iterator instead of an index silently breaks that pairing.
 int Autoplay::FindTouchByNote(game::LogicArcNote note) const {
     const uintptr_t want = note.Addr();
     if (!want) return -1;
-    for (int i = 0; i < cfg::autoplay::kMaxSynthTouches; ++i) {
-        if (touches_[i].role == TouchRole::None) continue;
-        if (touches_[i].note.Addr() == want) return i;
-    }
-    return -1;
+    const auto it = std::ranges::find_if(touches_, [want](const SynthTouch &touch) {
+        return touch.role != TouchRole::None && touch.note.Addr() == want;
+    });
+    return it == touches_.end() ? -1 : static_cast<int>(it - touches_.begin());
 }
 
 int Autoplay::FindFreeTouchIndex() const {
-    for (int i = 0; i < cfg::autoplay::kMaxSynthTouches; ++i) {
-        if (touches_[i].role == TouchRole::None) return i;
-    }
-    return -1;
+    const auto it = std::ranges::find_if(touches_, [](const SynthTouch &touch) {
+        return touch.role == TouchRole::None;
+    });
+    return it == touches_.end() ? -1 : static_cast<int>(it - touches_.begin());
 }
 
 void Autoplay::ReleaseTouch(SynthTouch &touch) {
@@ -135,9 +149,9 @@ void Autoplay::AutoplayLongNotesTick(game::Gameplay gameplay, int now_ms) {
 
     // This build only keeps arc assignments in the touch pool.
     // Holds use a dedicated stub (`hold_touch_stub_`) and are not tracked.
-    for (int i = 0; i < cfg::autoplay::kMaxSynthTouches; ++i) {
-        if (touches_[i].role != TouchRole::Arc) {
-            ReleaseTouch(touches_[i]);
+    for (auto &touch : touches_) {
+        if (touch.role != TouchRole::Arc) {
+            ReleaseTouch(touch);
         }
     }
 

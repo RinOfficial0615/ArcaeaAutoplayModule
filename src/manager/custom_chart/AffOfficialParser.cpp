@@ -1,7 +1,11 @@
 #include "manager/custom_chart/AffOfficialParser.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cctype>
+#include <ranges>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace arc_helper::aff {
@@ -35,6 +39,36 @@ enum class Tok {
     Designant,
 };
 
+// Single-character tokens: a hit in kPunctuation indexes kPunctuationTokens.
+constexpr std::string_view kPunctuation = "(){}[],;";
+constexpr std::array<Tok, kPunctuation.size()> kPunctuationTokens = {
+    Tok::LParen, Tok::RParen, Tok::LBrace,   Tok::RBrace,
+    Tok::LBracket, Tok::RBracket, Tok::Comma, Tok::Semicolon,
+};
+
+constexpr std::string_view kDigits = "0123456789";
+constexpr std::string_view kIdentifierChars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+
+using Keyword = std::pair<std::string_view, Tok>;
+// Reserved words. Longest-first ordering is not needed: the lexer matches whole
+// identifiers, so `arctap` and `at` never shadow each other.
+constexpr std::array<Keyword, 13> kKeywords = {{
+    {"timing", Tok::Timing},
+    {"hold", Tok::Hold},
+    {"arc", Tok::Arc},
+    {"camera", Tok::Camera},
+    {"scenecontrol", Tok::Scenecontrol},
+    {"timinggroup", Tok::Timinggroup},
+    {"flick", Tok::Flick},
+    {"arctap", Tok::Arctap},
+    {"at", Tok::Arctap},
+    {"true", Tok::True},
+    {"false", Tok::False},
+    {"rgb", Tok::Rgb},
+    {"designant", Tok::Designant},
+}};
+
 struct Lexer {
     std::string_view text;
     size_t i = 0;
@@ -67,9 +101,11 @@ struct Lexer {
         return false;
     }
 
+    // find_first_not_of returns npos once the rest of the text is all digits;
+    // clamping to size() makes that "consume to the end" instead of overflowing.
     std::string_view TakeDigits() {
         const size_t begin = i;
-        while (i < text.size() && text[i] >= '0' && text[i] <= '9') ++i;
+        i = std::min(text.find_first_not_of(kDigits, i), text.size());
         return text.substr(begin, i - begin);
     }
 
@@ -77,33 +113,9 @@ struct Lexer {
         SkipSpace();
         if (i >= text.size()) return Tok::End;
         const char c = text[i];
-        switch (c) {
-        case '(':
+        if (const size_t punct = kPunctuation.find(c); punct != std::string_view::npos) {
             ++i;
-            return Tok::LParen;
-        case ')':
-            ++i;
-            return Tok::RParen;
-        case '{':
-            ++i;
-            return Tok::LBrace;
-        case '}':
-            ++i;
-            return Tok::RBrace;
-        case '[':
-            ++i;
-            return Tok::LBracket;
-        case ']':
-            ++i;
-            return Tok::RBracket;
-        case ',':
-            ++i;
-            return Tok::Comma;
-        case ';':
-            ++i;
-            return Tok::Semicolon;
-        default:
-            break;
+            return kPunctuationTokens[punct];
         }
         if (c == '-') {
             ++i;
@@ -125,26 +137,10 @@ struct Lexer {
         }
         if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
             const size_t begin = i;
-            ++i;
-            while (i < text.size()) {
-                const unsigned char n = static_cast<unsigned char>(text[i]);
-                if (!std::isalnum(n) && text[i] != '_') break;
-                ++i;
-            }
+            i = std::min(text.find_first_not_of(kIdentifierChars, i), text.size());
             const std::string_view ident = text.substr(begin, i - begin);
-            if (ident == "timing") return Tok::Timing;
-            if (ident == "hold") return Tok::Hold;
-            if (ident == "arc") return Tok::Arc;
-            if (ident == "camera") return Tok::Camera;
-            if (ident == "scenecontrol") return Tok::Scenecontrol;
-            if (ident == "timinggroup") return Tok::Timinggroup;
-            if (ident == "flick") return Tok::Flick;
-            if (ident == "arctap" || ident == "at") return Tok::Arctap;
-            if (ident == "true") return Tok::True;
-            if (ident == "false") return Tok::False;
-            if (ident == "rgb") return Tok::Rgb;
-            if (ident == "designant") return Tok::Designant;
-            return Tok::Ident;
+            const auto keyword = std::ranges::find(kKeywords, ident, &Keyword::first);
+            return keyword == kKeywords.end() ? Tok::Ident : keyword->second;
         }
         ++i;
         return Tok::Error;
@@ -329,13 +325,10 @@ struct Parser {
 };
 
 std::string_view TrimLine(std::string_view line) {
-    while (!line.empty() && (line.front() == ' ' || line.front() == '\t' || line.front() == '\r')) {
-        line.remove_prefix(1);
-    }
-    while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
-        line.remove_suffix(1);
-    }
-    return line;
+    constexpr std::string_view kBlanks = " \t\r";
+    const size_t begin = line.find_first_not_of(kBlanks);
+    if (begin == std::string_view::npos) return {};
+    return line.substr(begin, line.find_last_not_of(kBlanks) - begin + 1);
 }
 
 } // namespace

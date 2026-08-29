@@ -4,6 +4,7 @@
 #include <array>
 #include <cerrno>
 #include <cctype>
+#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -15,35 +16,33 @@ namespace arc_helper::cfg::scope {
 inline constexpr std::array<const char *, 3> kDefaultPackages = {
     "moe.inf.arc", "moe.low.arc", "moe.low.mes"};
 
-inline std::string Trim(std::string_view value) {
+// Borrowing trim: scope.txt is only ever scanned, never stored, so no line has
+// to be copied into a std::string just to be compared against a package name.
+inline std::string_view Trim(std::string_view value) {
     size_t begin = 0, end = value.size();
     while (begin < end && std::isspace(static_cast<unsigned char>(value[begin]))) ++begin;
     while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) --end;
-    return std::string(value.substr(begin, end - begin));
+    return value.substr(begin, end - begin);
 }
 
 inline bool Contains(std::string_view text, std::string_view package_name) {
-    size_t line_begin = 0;
-    while (line_begin <= text.size()) {
-        size_t line_end = text.find('\n', line_begin);
-        if (line_end == std::string_view::npos) line_end = text.size();
-        std::string line = Trim(text.substr(line_begin, line_end - line_begin));
-        if (const size_t comment = line.find('#'); comment != std::string::npos) {
-            line.resize(comment);
-            line = Trim(line);
+    // An empty name must never match: the line loop below sees blank lines
+    // (from trailing newlines) and would otherwise accept one.
+    if (package_name.empty()) return false;
+    return std::ranges::any_of(std::views::split(text, '\n'), [&](auto &&raw_line) {
+        std::string_view line(raw_line.begin(), raw_line.end());
+        // '#' starts a comment anywhere on the line; scope.txt has no quoting.
+        if (const size_t comment = line.find('#'); comment != std::string_view::npos) {
+            line = line.substr(0, comment);
         }
-        if (!line.empty() && line == package_name) return true;
-        if (line_end == text.size()) break;
-        line_begin = line_end + 1;
-    }
-    return false;
+        return Trim(line) == package_name;
+    });
 }
 
 inline bool MatchesDefaultPackages(std::string_view package_name) {
-    return std::find_if(kDefaultPackages.begin(), kDefaultPackages.end(),
-                        [&](const char *default_package) {
-                            return package_name == default_package;
-                        }) != kDefaultPackages.end();
+    return std::ranges::any_of(kDefaultPackages, [&](const char *default_package) {
+        return package_name == default_package;
+    });
 }
 
 inline bool IsTargetPackage(int module_dir_fd, const char *package_name) {

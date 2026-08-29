@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ranges>
 #include <set>
+#include <string_view>
 
 namespace arc_helper {
 namespace {
@@ -14,9 +16,8 @@ std::string Extension(std::string_view path) {
         return {};
     }
     std::string result(path.substr(dot));
-    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    std::ranges::transform(result, result.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return result;
 }
 
@@ -34,10 +35,9 @@ std::string Canonicalize(std::string_view game_path) {
     const std::string_view song_root(normalized.data(), id_end + 1);
     const std::string_view remainder(normalized.data() + id_end + 1,
                                      normalized.size() - id_end - 1);
-    if (remainder.starts_with("1080/")) {
-        return std::string(song_root) + std::string(remainder.substr(5));
-    }
-    if (remainder.starts_with("1080_")) {
+    // The 1080 variant folder (either spelling) is folded into the song root:
+    // the game requests the base asset and the index carries only that path.
+    if (remainder.starts_with("1080/") || remainder.starts_with("1080_")) {
         return std::string(song_root) + std::string(remainder.substr(5));
     }
     return normalized;
@@ -93,17 +93,18 @@ const std::string *CustomChartAssetIndex::Resolve(std::string_view game_path) co
 
 std::vector<std::string> CustomChartAssetIndex::ListDirectory(std::string_view game_path) const {
     std::string directory = Canonicalize(game_path);
-    while (directory.ends_with('/')) directory.pop_back();
+    // find_last_not_of returns npos for an all-slash request, and npos + 1 is 0.
+    directory.resize(directory.find_last_not_of('/') + 1);
     if (!directory.empty()) directory.push_back('/');
     std::set<std::string> entries;
-    for (const auto &[logical_path, source_path] : assets_) {
-        (void)source_path;
-        if (!std::string_view(logical_path).starts_with(directory)) continue;
-        const std::string_view remainder(logical_path.data() + directory.size(),
-                                         logical_path.size() - directory.size());
+    for (const std::string &logical_path : std::views::keys(assets_)) {
+        std::string_view remainder(logical_path);
+        if (!remainder.starts_with(directory)) continue;
+        remainder.remove_prefix(directory.size());
         if (remainder.empty()) continue;
-        const size_t slash = remainder.find('/');
-        entries.emplace(remainder.substr(0, slash));
+        // Only the first path segment is a direct child; deeper entries are
+        // reached by listing their own parent directory.
+        entries.emplace(remainder.substr(0, remainder.find('/')));
     }
     return {entries.begin(), entries.end()};
 }
@@ -127,20 +128,20 @@ bool CustomChartAssetIndex::IsCustomChartPath(std::string_view game_path,
 
 #ifdef ARC_HELPER_HOST_TEST
 bool CustomChartAssetIndex::HasPrefix(std::string_view prefix) const {
-    return std::any_of(assets_.begin(), assets_.end(), [prefix](const auto &item) {
-        return std::string_view(item.first).starts_with(prefix);
+    return std::ranges::any_of(std::views::keys(assets_), [prefix](std::string_view key) {
+        return key.starts_with(prefix);
     });
 }
 
 bool CustomChartAssetIndex::HasSuffix(std::string_view suffix) const {
-    return std::any_of(assets_.begin(), assets_.end(), [suffix](const auto &item) {
-        return std::string_view(item.first).ends_with(suffix);
+    return std::ranges::any_of(std::views::keys(assets_), [suffix](std::string_view key) {
+        return key.ends_with(suffix);
     });
 }
 
 bool CustomChartAssetIndex::HasValueContaining(std::string_view value) const {
-    return std::any_of(assets_.begin(), assets_.end(), [value](const auto &item) {
-        return std::string_view(item.second).find(value) != std::string_view::npos;
+    return std::ranges::any_of(std::views::values(assets_), [value](std::string_view path) {
+        return path.contains(value);
     });
 }
 #endif

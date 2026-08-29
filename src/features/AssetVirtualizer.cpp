@@ -9,6 +9,8 @@
 #include <mutex>
 #include <new>
 #include <limits>
+#include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -315,16 +317,22 @@ bool IsCustomRuntimeSong(uintptr_t song) {
     return ReadSongId(song, id) && CustomChartManager::Instance().ContainsSongId(id);
 }
 
+// The game hands us a bare [begin, end) pair rather than a container, so every
+// lookup has to re-derive the extent first. Wrapping it in a span lets the
+// ranges algorithms below do that once; an unmapped list is an empty span.
+std::span<RuntimeSongDifficultyPair> EntriesOf(const RuntimeSongDifficultyList &list) {
+    return list.begin ? std::span(list.begin, list.end)
+                      : std::span<RuntimeSongDifficultyPair>{};
+}
+
 bool ContainsRuntimeSong(const RuntimeSongDifficultyList &list, uintptr_t song) {
-    if (!list.begin) return false;
-    return std::any_of(list.begin, list.end, [song](const auto &item) { return item.song == song; });
+    return std::ranges::any_of(EntriesOf(list),
+                               [song](const auto &item) { return item.song == song; });
 }
 
 bool ContainsCustomRuntimeSong(const RuntimeSongDifficultyList &list) {
-    if (!list.begin) return false;
-    return std::any_of(list.begin, list.end, [](const auto &item) {
-        return IsCustomRuntimeSong(item.song);
-    });
+    return std::ranges::any_of(EntriesOf(list),
+                               [](const auto &item) { return IsCustomRuntimeSong(item.song); });
 }
 
 uintptr_t FindRuntimeSong(std::string_view song_id) {
@@ -599,7 +607,7 @@ RuntimeSongDifficultyList SonglistDifficultyFilterHook(void *context,
     auto *merged = static_cast<RuntimeSongDifficultyPair *>(
         ::operator new(new_count * sizeof(RuntimeSongDifficultyPair)));
     if (old_count) std::memcpy(merged, result.begin, old_count * sizeof(*merged));
-    std::copy(additions.begin(), additions.end(), merged + old_count);
+    std::ranges::copy(additions, merged + old_count);
     ::operator delete(result.begin);
     result = {merged, merged + new_count, merged + new_count};
     ARC_LOGI("Added %zu custom songs for difficulty %u",

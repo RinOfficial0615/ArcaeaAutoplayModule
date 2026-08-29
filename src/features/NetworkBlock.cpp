@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <atomic>
+#include <string_view>
 
 #include "config/NetworkBlockConfig.h"
 #include "manager/custom_chart/CustomChartGameplaySession.hpp"
@@ -59,11 +60,11 @@ bool NetworkBlock::HandleNetworkRequest(NetworkManager::HandlerArgs &args) {
 
     args.blocked = true;
     if (reason) {
-        const size_t n = std::strlen(reason);
-        const size_t max_n = sizeof(args.block_reason) - 1;
-        const size_t copy_n = (n < max_n) ? n : max_n;
-        std::memcpy(args.block_reason, reason, copy_n);
-        args.block_reason[copy_n] = '\0';
+        // block_reason is a fixed char array, so the copy is clamped to leave
+        // room for the terminator; string_view::copy reports how much it wrote.
+        const size_t copied = std::string_view(reason).copy(args.block_reason,
+                                                            sizeof(args.block_reason) - 1);
+        args.block_reason[copied] = '\0';
     }
 
     const uint64_t blocked_count = g_blocked_count.fetch_add(1, std::memory_order_relaxed) + 1;

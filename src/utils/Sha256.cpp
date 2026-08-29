@@ -1,8 +1,10 @@
 #include "utils/Sha256.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <span>
 
 namespace arc_helper::crypto {
 namespace {
@@ -22,16 +24,17 @@ uint32_t Ror(uint32_t x, uint32_t n) { return (x >> n) | (x << (32 - n)); }
 
 class Sha256 {
 public:
-    void Update(const uint8_t *data, size_t size) {
-        total_ += size;
-        while (size) {
-            const size_t n = std::min(size, block_.size() - used_);
-            std::memcpy(block_.data() + used_, data, n);
+    // Spanning the input collapses the pointer/length pair the caller used to
+    // advance by hand: consuming n bytes is one subspan, not two assignments.
+    void Update(std::span<const uint8_t> data) {
+        total_ += data.size();
+        while (!data.empty()) {
+            const size_t n = std::min(data.size(), block_.size() - used_);
+            std::memcpy(block_.data() + used_, data.data(), n);
             used_ += n;
-            data += n;
-            size -= n;
+            data = data.subspan(n);
             if (used_ == block_.size()) {
-                Compress(block_.data());
+                Compress(block_);
                 used_ = 0;
             }
         }
@@ -42,12 +45,12 @@ public:
         block_[used_++] = 0x80;
         if (used_ > 56) {
             std::fill(block_.begin() + used_, block_.end(), 0);
-            Compress(block_.data());
+            Compress(block_);
             used_ = 0;
         }
         std::fill(block_.begin() + used_, block_.begin() + 56, 0);
         for (int i = 0; i < 8; ++i) block_[56 + i] = static_cast<uint8_t>(bits >> (56 - 8 * i));
-        Compress(block_.data());
+        Compress(block_);
         std::array<uint8_t, 32> out{};
         for (size_t i = 0; i < state_.size(); ++i) {
             out[i * 4] = static_cast<uint8_t>(state_[i] >> 24);
@@ -59,7 +62,9 @@ public:
     }
 
 private:
-    void Compress(const uint8_t *p) {
+    // A fixed-extent span states the 64-byte requirement in the type, so the
+    // block cannot be under-sized by accident the way a bare pointer allowed.
+    void Compress(std::span<const uint8_t, 64> p) {
         uint32_t w[64]{};
         for (int i = 0; i < 16; ++i) {
             w[i] = (static_cast<uint32_t>(p[i * 4]) << 24) |
@@ -106,7 +111,7 @@ std::string ToHex(const std::array<uint8_t, 32> &digest) {
 
 std::string Sha256Hex(const void *data, size_t size) {
     Sha256 sha;
-    sha.Update(static_cast<const uint8_t *>(data), size);
+    sha.Update({static_cast<const uint8_t *>(data), size});
     return ToHex(sha.Finish());
 }
 
@@ -121,7 +126,7 @@ std::string Sha256FileHex(const std::string &path, std::string *error) {
     while (file) {
         file.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
         const auto count = file.gcount();
-        if (count > 0) sha.Update(buffer.data(), static_cast<size_t>(count));
+        if (count > 0) sha.Update({buffer.data(), static_cast<size_t>(count)});
     }
     if (!file.eof()) {
         if (error) *error = "read failed";

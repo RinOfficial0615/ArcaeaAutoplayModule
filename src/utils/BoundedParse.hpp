@@ -12,17 +12,13 @@
 
 namespace arc_helper {
 
+// An all-blank input yields npos from find_first_not_of, which is the signal to
+// return an empty token.
 inline std::string TrimWhitespace(std::string_view value) {
-    size_t b = 0, e = value.size();
-    while (b < e && (value[b] == ' ' || value[b] == '\t' || value[b] == '\r' ||
-                     value[b] == '\n')) {
-        ++b;
-    }
-    while (e > b && (value[e - 1] == ' ' || value[e - 1] == '\t' || value[e - 1] == '\r' ||
-                     value[e - 1] == '\n')) {
-        --e;
-    }
-    return std::string(value.substr(b, e - b));
+    constexpr std::string_view kBlanks = " \t\r\n";
+    const size_t begin = value.find_first_not_of(kBlanks);
+    if (begin == std::string_view::npos) return {};
+    return std::string(value.substr(begin, value.find_last_not_of(kBlanks) - begin + 1));
 }
 
 inline bool ParseBoundedDouble(std::string_view text, double minimum, double maximum, double &out) {

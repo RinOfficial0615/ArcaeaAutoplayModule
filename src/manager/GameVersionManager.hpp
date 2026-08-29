@@ -47,6 +47,7 @@ private:
 
     bool TryResolveFromString(const char *version_string);
     bool TryResolveFromGlobal(const cfg::GameProfile &profile);
+    bool ResolveFromKnownProfiles();
 
     std::string ReadAppVersionString(const cfg::GameProfile &profile) const;
     std::string ReadLibcxxString(uintptr_t string_addr) const;

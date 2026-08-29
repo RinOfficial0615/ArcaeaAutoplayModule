@@ -1,6 +1,5 @@
 #include <jni.h>
 
-#include <cstring>
 #include <string_view>
 
 #include <fcntl.h>

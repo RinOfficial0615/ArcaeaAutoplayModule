@@ -3,7 +3,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -49,6 +51,8 @@ int main(int argc, char **argv) {
     bool checked_bounded_numeric = false;
     bool checked_bounded_arc = false;
     bool checked_configured_default = false;
+    bool checked_plain_songlist = false;
+    bool checked_songlist_conflict = false;
     for (const auto &song : songs) {
         assert(song.at("id").get<std::string>().size() <= 21);
         assert(manager.ContainsSongId(song.at("id").get<std::string>()));
@@ -131,6 +135,15 @@ int main(int argc, char **argv) {
             assert(song.at("audioPreview").get<int64_t>() == 0);
             assert(song.at("audioPreviewEnd").get<int64_t>() == 30000);
         }
+        if (title == "Plain Songlist") {
+            checked_plain_songlist = true;
+            assert(song.at("artist").get<std::string>() == "Plain Artist");
+            assert(song.at("bpm_base").get<double>() == 132.0);
+        }
+        // Both `songlist` and `songlist.json` ship in this package; `songlist`
+        // must win, and the losing spelling must never surface as a song.
+        if (title == "Conflict Winner") checked_songlist_conflict = true;
+        assert(title != "Conflict Loser");
         if (title == "Bounded Arc") {
             checked_bounded_arc = true;
             assert(song.at("bpm_base").get<double>() == 120.0);
@@ -170,6 +183,8 @@ int main(int argc, char **argv) {
     assert(checked_bounded_numeric);
     assert(checked_bounded_arc);
     assert(checked_configured_default);
+    assert(checked_plain_songlist);
+    assert(checked_songlist_conflict);
     std::string merge_error;
     const std::string merged_json = manager.MergeSonglist(
         R"({"songs":[{"idx":41,"id":"official"}]})", merge_error);
@@ -195,6 +210,24 @@ int main(int argc, char **argv) {
     const std::filesystem::path root(argv[1]);
     assert(std::filesystem::is_regular_file(root / "manifest.json"));
     assert(std::filesystem::is_regular_file(root / "import-report.json"));
+    // The duplicate songlist must be reported rather than silently resolved.
+    // The handle must be closed before the retry import below: the report
+    // writer publishes by rename, which cannot replace an open file on Windows.
+    std::string report_text;
+    {
+        std::ifstream report_file(root / "import-report.json");
+        report_text.assign(std::istreambuf_iterator<char>(report_file),
+                           std::istreambuf_iterator<char>{});
+    }
+    const auto report = nlohmann::json::parse(report_text, nullptr, false);
+    assert(report.is_object() && report.at("entries").is_array());
+    const auto &entries = report.at("entries");
+    const auto warning = std::ranges::find_if(entries, [](const auto &entry) {
+        return entry.at("package").template get<std::string>() == "songlist-conflict.zip" &&
+               entry.at("status").template get<std::string>() == "DEFAULTED_FIELD";
+    });
+    assert(warning != entries.end());
+    assert(warning->at("detail").get<std::string>().find("songlist.json") != std::string::npos);
 
     // A failed filesystem setup must not latch the manager permanently; a
     // later valid import can retry and publish a complete snapshot.

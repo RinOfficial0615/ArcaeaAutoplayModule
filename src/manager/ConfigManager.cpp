@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
+#include <string_view>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -164,27 +164,30 @@ bool ConfigManager::Save() {
     return false;
 }
 
+// nlohmann's object keys are std::string but its lookup overloads accept
+// anything usable as a key (its comparator is a transparent std::less<>), so
+// string_view keys reach the map without building a temporary std::string.
 nlohmann::json &ConfigManager::GetObjectLocked(std::string_view section,
                                                 std::string_view subsection) {
-    const std::string section_key(section);
-    nlohmann::json &section_object = data_[section_key];
+    nlohmann::json &section_object = data_[section];
     if (!section_object.is_object()) section_object = nlohmann::json::object();
     if (subsection.empty()) return section_object;
 
-    const std::string subsection_key(subsection);
-    nlohmann::json &subsection_object = section_object[subsection_key];
+    nlohmann::json &subsection_object = section_object[subsection];
     if (!subsection_object.is_object()) subsection_object = nlohmann::json::object();
     return subsection_object;
 }
 
 const nlohmann::json *ConfigManager::FindObjectLocked(std::string_view section,
                                                       std::string_view subsection) const {
-    const auto section_it = data_.find(std::string(section));
-    if (section_it == data_.end() || !section_it->is_object()) return nullptr;
-    if (subsection.empty()) return &*section_it;
-    const auto subsection_it = section_it->find(std::string(subsection));
-    if (subsection_it == section_it->end() || !subsection_it->is_object()) return nullptr;
-    return &*subsection_it;
+    if (!data_.contains(section)) return nullptr;
+    const nlohmann::json &section_object = data_.at(section);
+    if (!section_object.is_object()) return nullptr;
+    if (subsection.empty()) return &section_object;
+
+    if (!section_object.contains(subsection)) return nullptr;
+    const nlohmann::json &subsection_object = section_object.at(subsection);
+    return subsection_object.is_object() ? &subsection_object : nullptr;
 }
 
 void ConfigManager::EnsureObject(std::string_view section, std::string_view subsection) {

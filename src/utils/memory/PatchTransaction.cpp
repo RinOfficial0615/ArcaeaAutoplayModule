@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <ranges>
 #include <utility>
 
 #if defined(__ANDROID__) || defined(__linux__)
@@ -169,8 +170,7 @@ std::expected<void, MemoryError> PatchTransaction::CapturePages(uintptr_t addres
     if (!bounds) return std::unexpected(bounds.error());
 
     for (uintptr_t page = bounds->first; page < bounds->second;) {
-        const auto existing = std::ranges::find(pages_, page, &PageRecord::address);
-        if (existing == pages_.end()) {
+        if (!std::ranges::contains(pages_, page, &PageRecord::address)) {
             const auto permissions = memory_.GetPermissions(page);
             if (!permissions) return std::unexpected(permissions.error());
             pages_.push_back(PageRecord{page, *permissions, false});
@@ -181,27 +181,33 @@ std::expected<void, MemoryError> PatchTransaction::CapturePages(uintptr_t addres
     return {};
 }
 
-std::expected<void, MemoryError> PatchTransaction::PrepareWritablePages() {
+// Pages that are already writable are skipped: their permissions were never
+// changed, so RestorePages() must not undo a state we did not set.
+std::expected<void, MemoryError> PatchTransaction::MakePagesWritable() {
     const size_t page_size = RuntimeMemory::PageSize();
     for (auto &page : pages_) {
         if ((page.permissions & PROT_WRITE) != 0) continue;
-
         page.writable_changed = true;
         const int writable_permissions = page.permissions | PROT_READ | PROT_WRITE;
-        if (const auto result = memory_.Protect(page.address, page_size, writable_permissions); !result) {
+        if (const auto result = memory_.Protect(page.address, page_size, writable_permissions);
+            !result) {
             return std::unexpected(result.error());
         }
     }
     return {};
 }
 
+std::expected<void, MemoryError> PatchTransaction::PrepareWritablePages() {
+    return MakePagesWritable();
+}
+
 bool PatchTransaction::RestorePages() {
     bool restored = true;
     const size_t page_size = RuntimeMemory::PageSize();
-    for (auto iter = pages_.rbegin(); iter != pages_.rend(); ++iter) {
-        if (!iter->writable_changed) continue;
-        if (memory_.Protect(iter->address, page_size, iter->permissions)) {
-            iter->writable_changed = false;
+    for (auto &page : pages_ | std::views::reverse) {
+        if (!page.writable_changed) continue;
+        if (memory_.Protect(page.address, page_size, page.permissions)) {
+            page.writable_changed = false;
         } else {
             restored = false;
         }
@@ -210,25 +216,17 @@ bool PatchTransaction::RestorePages() {
 }
 
 bool PatchTransaction::RollbackApplied() {
-    const size_t page_size = RuntimeMemory::PageSize();
-    bool restored = true;
-
     // Re-open every non-writable page, including pages whose first restore
     // succeeded. This keeps an explicit retry possible after a degraded write.
-    for (auto &page : pages_) {
-        if ((page.permissions & PROT_WRITE) != 0) continue;
-        page.writable_changed = true;
-        const int writable_permissions = page.permissions | PROT_READ | PROT_WRITE;
-        if (!memory_.Protect(page.address, page_size, writable_permissions)) restored = false;
-    }
+    bool restored = MakePagesWritable().has_value();
 
-    for (auto iter = patches_.rbegin(); iter != patches_.rend(); ++iter) {
-        if (!iter->touched) continue;
-        if (!memory_.WriteBytes(iter->address, std::span<const std::byte>(iter->original))) {
+    for (auto &patch : patches_ | std::views::reverse) {
+        if (!patch.touched) continue;
+        if (!memory_.WriteBytes(patch.address, std::span<const std::byte>(patch.original))) {
             restored = false;
         } else {
-            __builtin___clear_cache(reinterpret_cast<char *>(iter->address),
-                                    reinterpret_cast<char *>(iter->address + iter->original.size()));
+            __builtin___clear_cache(reinterpret_cast<char *>(patch.address),
+                                    reinterpret_cast<char *>(patch.address + patch.original.size()));
         }
     }
 

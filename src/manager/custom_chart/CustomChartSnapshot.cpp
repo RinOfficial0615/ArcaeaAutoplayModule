@@ -1,5 +1,6 @@
 #include "manager/custom_chart/CustomChartSnapshot.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -72,28 +73,31 @@ std::string ImportSnapshot::MergeOfficialSonglist(std::string_view official_json
         error = "official songlist is invalid";
         return {};
     }
-    auto songs_value = merged.find("songs");
-    if (songs_value == merged.end() || !songs_value->is_array()) {
+    if (!merged.contains("songs") || !merged.at("songs").is_array()) {
         error = "songs array missing";
         return {};
     }
+    Json &songs_value = merged.at("songs");
     Json custom = Json::parse(SongsJson(), nullptr, false);
     if (custom.is_discarded() || !custom.is_array()) {
         error = "generated custom songs are invalid";
         return {};
     }
 
+    // Official entries keep their own idx and the custom block is appended
+    // after the highest one. Entries without a usable integer idx are skipped
+    // rather than fatal: one malformed row must not derail the whole merge.
     int64_t next_idx = 0;
-    for (const auto &song : *songs_value) {
-        if (!song.is_object()) continue;
-        const auto idx = song.find("idx");
-        if (idx == song.end() || !idx->is_number_integer()) continue;
-        const int64_t value = idx->get<int64_t>();
+    for (const auto &song : songs_value) {
+        if (!song.is_object() || !song.contains("idx")) continue;
+        const Json &idx = song.at("idx");
+        if (!idx.is_number_integer()) continue;
+        const int64_t value = idx.get<int64_t>();
         if (value == std::numeric_limits<int64_t>::max()) {
             error = "official songlist index exhausted";
             return {};
         }
-        if (value >= next_idx) next_idx = value + 1;
+        next_idx = std::max(next_idx, value + 1);
     }
     for (auto &song : custom) {
         if (next_idx == std::numeric_limits<int64_t>::max()) {
@@ -102,7 +106,7 @@ std::string ImportSnapshot::MergeOfficialSonglist(std::string_view official_json
         }
         song["idx"] = next_idx++;
     }
-    songs_value->insert(songs_value->end(), custom.begin(), custom.end());
+    songs_value.insert(songs_value.end(), custom.begin(), custom.end());
     return merged.dump(-1, ' ', false, Json::error_handler_t::replace);
 }
 
