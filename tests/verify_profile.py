@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import pathlib
 import struct
@@ -129,6 +130,41 @@ PROFILES = {
             0x9289D8: 0x350012C0,
         },
     },
+    "7.0.1c": {
+        "so": ROOT.parent / "7.0.1c" / "libcocos2dcpp.so",
+        "sha256": "426ce11edb840514acf0056d9ba48b597cf30f796298461b16c4e4e113e8742d",
+        "expected": {
+            0xFFC84C: "e80f19fcfd7b01a9fc6f02a9fa6703a9",
+            0x15D28B0: "ff4306d1ea8b00fde923126dfd7b13a9",
+            0x140CFF4: "ff8302d1fd7b04a9fb2b00f9fa6706a9",
+            0x11306E0: "ff0302d1fd7b04a9f85f05a9f65706a9",
+            0xAC4794: "ff8302d1e81b00fdfd7b04a9fc6f05a9",
+            0x8372E0: "ffc301d1e81b00fdfd7b04a9f65705a9",
+            0x19AE168: "ff0302d1e81b00fdfd7b04a9f85f05a9",
+            0x886444: "ffc300d1fd7b01a9f44f02a9fd430091",
+            0x10FC860: "ff8301d1fd7b02a9f71b00f9f65704a9",
+            0x1A09024: "ff0304d1fd7b0fa9fdc30391a20f39a9",
+            # Songlist data loader: AAssetManager_open BL at 0xE22204, whose
+            # return address is the exact caller 0xE22208.
+            0xE22204: "5f483094f40300aae00700b4e00314aa",
+            0x18AEFBC: "ff8303d1fd7b08a9fc6f09a9fa670aa9",
+            0x1638058: "ff8301d1fd7b02a9f85f03a9f65704a9",
+            0x11A0070: "ffc301d1fd7b04a9f65705a9f44f06a9",
+            0x19A7194: "fd7bbda9f65701a9f44f02a9fd030091",
+            0x18233EC: "fd7bbaa9fc6f01a9fa6702a9f85f03a9",
+            0x1937B3C: "ff8303d1fd7b0ba9f6570ca9f44f0da9",
+            0xE4B5F8: "fd7bbea9f30b00f9fd030091f30300aa",
+            # Scenecontrol getter keeps the 7.0.0c layout at play context +0x110.
+            0x11A57A8: "00404439c0035fd6",
+        },
+        "patches": {
+            0xFFCD34: 0x11019148,
+            0xFFCDEC: 0x11019148,
+            0xFFCE3C: 0x11032148,
+            0x17BC004: 0x540013A1,
+            0x17BC020: 0x350012C0,
+        },
+    },
 }
 
 
@@ -203,22 +239,41 @@ def verify_profile(version: str, spec: dict) -> None:
     )
 
 
-for version, spec in PROFILES.items():
-    if spec["so"].is_file():
-        verify_profile(version, spec)
-    else:
-        print(f"[{version}] skipped, {spec['so'].name} not present")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Verify pinned ArcHelper game profiles")
+    parser.add_argument(
+        "versions",
+        nargs="*",
+        choices=tuple(PROFILES),
+        help="optional profile versions; omit to verify every available binary",
+    )
+    args = parser.parse_args()
+    selected = args.versions or list(PROFILES)
 
-APK = ROOT / ".tmp" / "arcaea_6.16.2c_arc_helper_diag.apk"
-if APK.is_file():
-    with zipfile.ZipFile(APK) as archive:
-        provider = archive.read("lib/arm64-v8a/libfmodProvider.so")
-    provider_sha256 = hashlib.sha256(provider).hexdigest()
-    assert provider_sha256 == "1f3907b13d3ce3ef6b3d25a92edc971d5763d0b3220a9a99597424481d06a291"
-    provider_symbols = elf_dynamic_symbols(provider)
-    fmod_symbol = provider_symbols.get("_ZN24AudioProviderFMODAndroid7loadBGMEPKci")
-    assert fmod_symbol is not None, "FMOD loadBGM ELF dynamic symbol missing"
-    assert fmod_symbol[2] & 0x0F == 2 and fmod_symbol[2] >> 4 == 1, fmod_symbol
-    assert fmod_symbol[1] > 0, fmod_symbol
-    print(f"verified FMOD provider from {APK.name} sha256={provider_sha256}")
-    print(f"verified FMOD loadBGM dynsym value=0x{fmod_symbol[0]:x} size={fmod_symbol[1]}")
+    for version in selected:
+        spec = PROFILES[version]
+        if spec["so"].is_file():
+            verify_profile(version, spec)
+        else:
+            print(f"[{version}] skipped, {spec['so'].name} not present")
+
+    if args.versions and "6.16.2c" not in selected:
+        return
+
+    apk = ROOT / ".tmp" / "arcaea_6.16.2c_arc_helper_diag.apk"
+    if apk.is_file():
+        with zipfile.ZipFile(apk) as archive:
+            provider = archive.read("lib/arm64-v8a/libfmodProvider.so")
+        provider_sha256 = hashlib.sha256(provider).hexdigest()
+        assert provider_sha256 == "1f3907b13d3ce3ef6b3d25a92edc971d5763d0b3220a9a99597424481d06a291"
+        provider_symbols = elf_dynamic_symbols(provider)
+        fmod_symbol = provider_symbols.get("_ZN24AudioProviderFMODAndroid7loadBGMEPKci")
+        assert fmod_symbol is not None, "FMOD loadBGM ELF dynamic symbol missing"
+        assert fmod_symbol[2] & 0x0F == 2 and fmod_symbol[2] >> 4 == 1, fmod_symbol
+        assert fmod_symbol[1] > 0, fmod_symbol
+        print(f"verified FMOD provider from {apk.name} sha256={provider_sha256}")
+        print(f"verified FMOD loadBGM dynsym value=0x{fmod_symbol[0]:x} size={fmod_symbol[1]}")
+
+
+if __name__ == "__main__":
+    main()

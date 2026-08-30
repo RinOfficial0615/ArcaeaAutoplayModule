@@ -46,7 +46,7 @@ verified: with it pointing at r27 and r30 among the siblings, the script still p
 
 Only one situation genuinely needs `--ndk-home`: **the target NDK is not among those siblings**. And there is an inverse
 trap when passing it: an explicit value is treated as the sole candidate and the upward search for a newer version no longer
-happens — verified: passing the r27 directory fails outright with "Selected NDK is 27.2.12479018 (<= r28)". To let the script
+happens — passing any r29-or-older directory fails outright with "Selected NDK is ... (<= r29)". To let the script
 choose by itself, pass the `ndk/` root.
 Both the default (DEBUG) and `--rel` modes have been verified.
 

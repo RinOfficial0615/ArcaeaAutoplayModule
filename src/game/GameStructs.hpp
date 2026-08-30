@@ -17,7 +17,7 @@ namespace arc_helper::cfg::layouts {
 //  Version handling:
 //    Every struct is templated on GameVersionId.  The fields used here are
 //    shared through 6.16.8c (verified by cross-version function/BL comparison).
-//    7.0.0c inserts one pointer-sized member into the note-family derived area,
+//    7.0.x inserts one pointer-sized member into the note-family derived area,
 //    shifting every derived-class member after it by +8; the base-zone fields
 //    (timeStart/timeEnd, pos_ptr, playSceneCtx, active, Timer, Gameplay ranges)
 //    are verified unchanged.  Only the affected specializations are overridden.
@@ -78,8 +78,9 @@ struct NoteBase {
     float     runtimeY;                 // +0xD0  (208)
 };
 
-// 7.0.0c: identical to NoteBase except the arc runtime float pair moved into
-// NoteRuntimePos<k7000c>; taps never access it, so it is dropped here.
+// 7.0.x: identical to NoteBase except the arc runtime float pair moved into
+// the version-specialized NoteRuntimePos; taps never access it, so it is
+// dropped here.
 struct Note7000cBase {
     uint8_t   pad_00[0x18];
     int32_t   timeStart;                // +0x18  (24)
@@ -100,6 +101,9 @@ struct Note : impl::NoteBase {};
 
 template <>
 struct Note<GameVersionId::k7000c> : impl::Note7000cBase {};
+
+template <>
+struct Note<GameVersionId::k7001c> : impl::Note7000cBase {};
 
 // ---------------------------------------------------------------------------
 //  NotePosition
@@ -125,7 +129,7 @@ struct ArcNoteBase {
     uint8_t  activeNow;                 // +0xC8  (200)
 };
 
-// 7.0.0c: one inserted member before isVoid shifts the derived tail by +8.
+// 7.0.x: one inserted member before isVoid shifts the derived tail by +8.
 struct ArcNote7000cBase {
     uint8_t  pad_00[0xA4];
     int32_t  isVoid;                    // +0xA4  (164)
@@ -140,10 +144,13 @@ struct ArcNote : impl::ArcNoteBase {};
 template <>
 struct ArcNote<GameVersionId::k7000c> : impl::ArcNote7000cBase {};
 
+template <>
+struct ArcNote<GameVersionId::k7001c> : impl::ArcNote7000cBase {};
+
 // ---------------------------------------------------------------------------
 //  LogicNote runtime position overlay (arc objects only).  The game writes the
 //  current track-space position per arc into this float pair; taps never touch
-//  it, so only arcs observe the 7.0.0c shift.
+//  it, so only arcs observe the 7.0.x shift.
 // ---------------------------------------------------------------------------
 namespace impl {
 struct NoteRuntimePosBase {
@@ -152,7 +159,7 @@ struct NoteRuntimePosBase {
     float   runtimeY;                   // +0xD0  (208)
 };
 
-// 7.0.0c: same +8 shift as the other derived members.
+// 7.0.x: same +8 shift as the other derived members.
 struct NoteRuntimePos7000cBase {
     uint8_t pad_00[0xD4];
     float   runtimeX;                   // +0xD4  (212)
@@ -166,6 +173,9 @@ struct NoteRuntimePos : impl::NoteRuntimePosBase {};
 template <>
 struct NoteRuntimePos<GameVersionId::k7000c> : impl::NoteRuntimePos7000cBase {};
 
+template <>
+struct NoteRuntimePos<GameVersionId::k7001c> : impl::NoteRuntimePos7000cBase {};
+
 // ---------------------------------------------------------------------------
 //  LogicHoldNote (extends LogicNote)
 // ---------------------------------------------------------------------------
@@ -175,7 +185,7 @@ struct HoldNoteBase {
     uint8_t headActivated;              // +0xA0  (160)
 };
 
-// 7.0.0c: shifted by the same derived-area insertion.
+// 7.0.x: shifted by the same derived-area insertion.
 struct HoldNote7000cBase {
     uint8_t pad_00[0xA8];
     uint8_t headActivated;              // +0xA8  (168)
@@ -187,6 +197,9 @@ struct HoldNote : impl::HoldNoteBase {};
 
 template <>
 struct HoldNote<GameVersionId::k7000c> : impl::HoldNote7000cBase {};
+
+template <>
+struct HoldNote<GameVersionId::k7001c> : impl::HoldNote7000cBase {};
 
 // ---------------------------------------------------------------------------
 //  TouchLike  (synthetic or hardware touch passed to judgement calls)
@@ -444,6 +457,44 @@ static_assert(offsetof(SongDifficulty<V::k7000c>, lock) == 0xF0);
 static_assert(offsetof(SongDifficulty<V::k7000c>, rating_class) == 0x124);
 static_assert(sizeof(SongDifficulty<V::k7000c>) == 0x128);
 static_assert(offsetof(SongRegistryOwner<V::k7000c>, registry) == 32);
+
+// 7.0.1c keeps the 7.0.0c object layouts. The paired gameplay, chart-path,
+// play-launcher, and availability bodies retain every consumed displacement.
+static_assert(offsetof(Timer<V::k7001c>, msA) == 32);
+static_assert(offsetof(Timer<V::k7001c>, msB) == 40);
+static_assert(offsetof(Timer<V::k7001c>, flag) == 45);
+static_assert(offsetof(Timer<V::k7001c>, msC) == 52);
+static_assert(offsetof(Gameplay<V::k7001c>, timer) == 48);
+static_assert(offsetof(Gameplay<V::k7001c>, note_begin) == 160);
+static_assert(offsetof(Gameplay<V::k7001c>, note_end) == 168);
+static_assert(offsetof(Note<V::k7001c>, timeStart) == 24);
+static_assert(offsetof(Note<V::k7001c>, timeEnd) == 28);
+static_assert(offsetof(Note<V::k7001c>, pos_ptr) == 32);
+static_assert(offsetof(Note<V::k7001c>, playSceneCtx) == 64);
+static_assert(offsetof(Note<V::k7001c>, active) == 84);
+static_assert(offsetof(Note<V::k7001c>, longTouchState) == 92);
+static_assert(offsetof(NotePosition<V::k7001c>, xNorm) == 20);
+static_assert(offsetof(ArcNote<V::k7001c>, isVoid) == 164);
+static_assert(offsetof(ArcNote<V::k7001c>, activeNow) == 208);
+static_assert(offsetof(NoteRuntimePos<V::k7001c>, runtimeX) == 212);
+static_assert(offsetof(NoteRuntimePos<V::k7001c>, runtimeY) == 216);
+static_assert(offsetof(HoldNote<V::k7001c>, headActivated) == 168);
+static_assert(offsetof(TouchLike<V::k7001c>, sysId) == 12);
+static_assert(offsetof(TouchLike<V::k7001c>, ndcX) == 28);
+static_assert(offsetof(HttpRequest<V::k7001c>, type) == 12);
+static_assert(offsetof(HttpRequest<V::k7001c>, bodyBegin) == 40);
+static_assert(offsetof(HttpRequest<V::k7001c>, bodyEnd) == 48);
+static_assert(offsetof(HttpResponse<V::k7001c>, request) == 16);
+static_assert(offsetof(HttpResponse<V::k7001c>, succeed) == 24);
+static_assert(offsetof(HttpResponse<V::k7001c>, bodyVec) == 32);
+static_assert(offsetof(HttpResponse<V::k7001c>, statusCode) == 80);
+static_assert(offsetof(Song<V::k7001c>, remote_pack) == 0x1C0);
+static_assert(offsetof(Song<V::k7001c>, difficulty_pointers) == 0x228);
+static_assert(offsetof(Song<V::k7001c>, difficulty_presence) == 0x250);
+static_assert(offsetof(SongDifficulty<V::k7001c>, lock) == 0xF0);
+static_assert(offsetof(SongDifficulty<V::k7001c>, rating_class) == 0x124);
+static_assert(sizeof(SongDifficulty<V::k7001c>) == 0x128);
+static_assert(offsetof(SongRegistryOwner<V::k7001c>, registry) == 32);
 
 } // namespace verify
 

@@ -1,0 +1,122 @@
+{
+  "_comment": [
+    "Verified 7.0.0c -> 7.0.1c function mapping consumed by the 7.0.1c profile.",
+    "Every new address was the unique masked-instruction consensus winner; rerun locate to guard against drift and diff to inspect semantic changes."
+  ],
+  "functions": [
+    {
+      "name": "process_logic_notes",
+      "size": "0x6E0",
+      "old": "0xF21224",
+      "new": "0xffc84c"
+    },
+    {
+      "name": "try_tap_judgement_for_touch",
+      "size": "0x8E4",
+      "old": "0x109F144",
+      "new": "0x15d28b0"
+    },
+    {
+      "name": "score_state_apply_judgement",
+      "size": "0x380",
+      "old": "0x9D5500",
+      "new": "0x140cff4"
+    },
+    {
+      "name": "score_state_apply_miss",
+      "size": "0x170",
+      "old": "0xE03F70",
+      "new": "0x11306e0"
+    },
+    {
+      "name": "show_judgement_effect_at_note",
+      "size": "0x5BC",
+      "old": "0xB804E4",
+      "new": "0xac4794"
+    },
+    {
+      "name": "note_effect_on_miss",
+      "size": "0x180",
+      "old": "0x7A5484",
+      "new": "0x8372e0"
+    },
+    {
+      "name": "note_effect_on_judgement",
+      "size": "0x118",
+      "old": "0xD0B0F4",
+      "new": "0x19ae168"
+    },
+    {
+      "name": "logic_color_accepts_touch",
+      "size": "0x180",
+      "old": "0x18DBD7C",
+      "new": "0x886444"
+    },
+    {
+      "name": "httpclient_process_request",
+      "size": "0x4B8",
+      "old": "0x1459B6C",
+      "new": "0x10fc860"
+    },
+    {
+      "name": "curl_easy_setopt_wrapper",
+      "size": "0x80",
+      "old": "0xD8B4C4",
+      "new": "0x1a09024"
+    },
+    {
+      "name": "songlist_parser_body",
+      "size": "0x77E8",
+      "old": "0xCCE050",
+      "new": "0xc8b1d0"
+    },
+    {
+      "name": "asset_bundle_loader",
+      "size": "0x9CC",
+      "old": "0x928590",
+      "new": "0x17bbbd8"
+    },
+    {
+      "name": "songlist_difficulty_filter",
+      "size": "0x354",
+      "old": "0xB6E964",
+      "new": "0x18aefbc"
+    },
+    {
+      "name": "difficulty_availability",
+      "size": "0x200",
+      "old": "0x195AE9C",
+      "new": "0x1638058"
+    },
+    {
+      "name": "song_unlock_mask_check",
+      "size": "0x1AC",
+      "old": "0x1399B04",
+      "new": "0x11a0070"
+    },
+    {
+      "name": "content_availability",
+      "size": "0x64",
+      "old": "0x18D8DE0",
+      "new": "0x19a7194"
+    },
+    {
+      "name": "play_launcher",
+      "size": "0x288C",
+      "old": "0xA0C430",
+      "new": "0x18233ec"
+    },
+    {
+      "name": "chart_path_builder",
+      "size": "0x3B0",
+      "old": "0xF4D3C8",
+      "new": "0x1937b3c"
+    },
+    {
+      "name": "find_song_by_id",
+      "size": "0x3C",
+      "old": "0x7AF94C",
+      "new": "0xe4b5f8"
+    }
+  ]
+}

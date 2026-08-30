@@ -123,6 +123,7 @@ Options:
     --help                      Show this help message
 
 Notes:
+    Requires Android NDK r30 or newer; r29 and older are rejected.
     Switching between DEBUG and --rel discards build/obj automatically.
     APP_CPPFLAGS uses -flto, so objects hold LLVM bitcode rather than machine
     code and ndk-build cannot detect the optimisation change; reusing them
@@ -231,8 +232,8 @@ if (-not $Newest) {
     exit 1
 }
 
-if ($Newest.Version.Major -le 28) {
-    Write-LogError "Newest installed NDK is $($Newest.Version) (<= r28). Install r29+ under: $SearchRoot"
+if ($Newest.Version.Major -le 29) {
+    Write-LogError "Newest installed NDK is $($Newest.Version) (<= r29). Install r30+ under: $SearchRoot"
     exit 1
 }
 
@@ -255,8 +256,8 @@ if (-not $UsingVer) {
     Write-LogError "Failed to parse NDK version at: $NdkHome"
     exit 1
 }
-if ($UsingVer.Major -le 28) {
-    Write-LogError "Selected NDK is $UsingVer (<= r28). Install r29+ and/or update ANDROID_NDK_HOME."
+if ($UsingVer.Major -le 29) {
+    Write-LogError "Selected NDK is $UsingVer (<= r29). Install r30+ and/or update ANDROID_NDK_HOME."
     exit 1
 }
 

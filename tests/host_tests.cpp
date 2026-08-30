@@ -148,13 +148,22 @@ int main(int argc, char **argv) {
                    .data() == cfg::autoplay::kSig_6162c_ScoreState_applyJudgement.data());
         assert(cfg::autoplay::ScoreStateApplyMissSignature(cfg::GameVersionId::k7000c).data() ==
                cfg::autoplay::kSig_6162c_ScoreState_applyMiss.data());
-        // 7.0.0c shifts only the note-family derived tail.
+        assert(cfg::autoplay::ScoreStateApplyJudgementSignature(cfg::GameVersionId::k7001c)
+                   .data() == cfg::autoplay::kSig_6162c_ScoreState_applyJudgement.data());
+        assert(cfg::autoplay::ScoreStateApplyMissSignature(cfg::GameVersionId::k7001c).data() ==
+               cfg::autoplay::kSig_6162c_ScoreState_applyMiss.data());
+        // 7.0.x shifts only the note-family derived tail.
         assert(cfg::autoplay::ArcIsVoidOffset(cfg::GameVersionId::k6168c) == 0x9C);
         assert(cfg::autoplay::ArcIsVoidOffset(cfg::GameVersionId::k7000c) == 0xA4);
         assert(cfg::autoplay::ArcActiveNowOffset(cfg::GameVersionId::k7000c) == 0xD0);
         assert(cfg::autoplay::NoteRuntimeXOffset(cfg::GameVersionId::k7000c) == 0xD4);
         assert(cfg::autoplay::NoteRuntimeYOffset(cfg::GameVersionId::k7000c) == 0xD8);
         assert(cfg::autoplay::HoldHeadActivatedOffset(cfg::GameVersionId::k7000c) == 0xA8);
+        assert(cfg::autoplay::ArcIsVoidOffset(cfg::GameVersionId::k7001c) == 0xA4);
+        assert(cfg::autoplay::ArcActiveNowOffset(cfg::GameVersionId::k7001c) == 0xD0);
+        assert(cfg::autoplay::NoteRuntimeXOffset(cfg::GameVersionId::k7001c) == 0xD4);
+        assert(cfg::autoplay::NoteRuntimeYOffset(cfg::GameVersionId::k7001c) == 0xD8);
+        assert(cfg::autoplay::HoldHeadActivatedOffset(cfg::GameVersionId::k7001c) == 0xA8);
         assert(cfg::FindGameProfileByVersionString("7.0.0c") != nullptr);
         const auto *profile_7000 = cfg::FindGameProfileByVersionString("7.0.0c");
         assert(profile_7000 != nullptr);
@@ -162,9 +171,16 @@ int main(int argc, char **argv) {
         assert(profile_7000->capabilities.autoplay && profile_7000->capabilities.network &&
                profile_7000->capabilities.custom_charts);
         assert(profile_7000->custom_charts.expected_songlist_loader_call != 0);
-        // Scenecontrol gate override ships only for 7.0.0c; older profiles
+        const auto *profile_7001 = cfg::FindGameProfileByVersionString("7.0.1c");
+        assert(profile_7001 != nullptr);
+        assert(std::string_view(profile_7001->version_name) == "7.0.1c");
+        assert(profile_7001->capabilities.autoplay && profile_7001->capabilities.network &&
+               profile_7001->capabilities.custom_charts);
+        assert(profile_7001->custom_charts.expected_songlist_loader_call == 0x9430485F);
+        // Scenecontrol gate override ships for 7.0.x; older profiles
         // keep the zero offset and the install skips that patch.
         assert(profile_7000->custom_charts.scenecontrol_gate_getter == 0xE6F768);
+        assert(profile_7001->custom_charts.scenecontrol_gate_getter == 0x11A57A8);
         assert(profile_6168->custom_charts.scenecontrol_gate_getter == 0);
         assert(profile_616->custom_charts.scenecontrol_gate_getter == 0);
         assert(cfg::custom_charts::kExpectedScenecontrolGateGetter.size() ==
