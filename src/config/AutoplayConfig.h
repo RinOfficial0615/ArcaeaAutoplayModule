@@ -76,9 +76,20 @@ static_assert(k7Note_runtime_y_f32_off ==
               offsetof(layouts::NoteRuntimePos<GameVersionId::k7001c>, runtimeY));
 static_assert(k7Hold_headActivated_u8_off ==
               offsetof(layouts::HoldNote<GameVersionId::k7001c>, headActivated));
+static_assert(k7Arc_isVoid_i32_off ==
+              offsetof(layouts::ArcNote<GameVersionId::k70255c>, isVoid));
+static_assert(k7Arc_activeNow_u8_off ==
+              offsetof(layouts::ArcNote<GameVersionId::k70255c>, activeNow));
+static_assert(k7Note_runtime_x_f32_off ==
+              offsetof(layouts::NoteRuntimePos<GameVersionId::k70255c>, runtimeX));
+static_assert(k7Note_runtime_y_f32_off ==
+              offsetof(layouts::NoteRuntimePos<GameVersionId::k70255c>, runtimeY));
+static_assert(k7Hold_headActivated_u8_off ==
+              offsetof(layouts::HoldNote<GameVersionId::k70255c>, headActivated));
 
 inline constexpr bool Uses7NoteLayout(GameVersionId version) {
-    return version == GameVersionId::k7000c || version == GameVersionId::k7001c;
+    return version == GameVersionId::k7000c || version == GameVersionId::k7001c ||
+           version == GameVersionId::k70255c;
 }
 
 // Version-aware accessors for the shifted members. Callers pass the resolved

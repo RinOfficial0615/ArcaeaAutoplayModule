@@ -10,7 +10,7 @@ Arcaea 辅助模块，提供自动打歌、网络控制与本地自定义谱面�
 
 - Android NDK r30+（构建脚本自动选最新版；r29 及以下会报错）
 - 仅 Zygisk 模式：设备已启用 Zygisk
-- Arcaea 6.12.11c、6.13.2f、6.14.0c、6.16.2c、6.16.8c、7.0.0c 或 7.0.1c
+- Arcaea 6.12.11c、6.13.2f、6.14.0c、6.16.2c、6.16.8c、7.0.0c、7.0.1c 或 7.0.255c
 
 ## 构建
 
@@ -69,4 +69,4 @@ git submodule update --init --recursive
 - 项目结构：`docs/project-structure.md`
 - 版本支持：`docs/version-support.md`
 - 现代 C++ 约定：`docs/cpp/index.md` —— 工具链、实测矩阵、构建陷阱、用法约定
-- 偏移参考：`docs/offsets/6.12.11c-offsets.md`、`docs/offsets/6.16.2c-offsets.md`、`docs/offsets/6.16.8c-offsets.md`、`docs/offsets/7.0.0c-offsets_CN.md`、`docs/offsets/7.0.1c-offsets_CN.md`
+- 偏移参考：`docs/offsets/6.12.11c-offsets.md`、`docs/offsets/6.16.2c-offsets.md`、`docs/offsets/6.16.8c-offsets.md`、`docs/offsets/7.0.0c-offsets_CN.md`、`docs/offsets/7.0.1c-offsets_CN.md`、`docs/offsets/7.0.255c-offsets_CN.md`

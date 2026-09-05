@@ -165,6 +165,44 @@ PROFILES = {
             0x17BC020: 0x350012C0,
         },
     },
+    "7.0.255c": {
+        "so": ROOT.parent / "7.0.255c" / "libcocos2dcpp.so",
+        "sha256": "72e42cb4925655ecfef98bf2dbf92a5ac05145eb005a531c96c11b927a46e6dc",
+        "expected": {
+            0x127D830: "e80f19fcfd7b01a9fc6f02a9fa6703a9",
+            0x14B7010: "ff4306d1ea8b00fde923126dfd7b13a9",
+            0xB4DB58: "ff8302d1fd7b04a9fb2b00f9fa6706a9",
+            0xE19784: "ff0302d1fd7b04a9f85f05a9f65706a9",
+            # 7.0.255c rewrote ShowJudgementEffectAtNote (0x598 -> 0xAC8 bytes,
+            # new prologue); identity is confirmed via the hit_pure/hit_far/
+            # hit_lost + EARLY/LATE strings and both NoteEffect callers.
+            0xEED33C: "ff4306d1ef3b0f6ded33106deb2b116d",
+            0x12E3B28: "ffc301d1e81b00fdfd7b04a9f65705a9",
+            0x13511A0: "ff0302d1e81b00fdfd7b04a9f85f05a9",
+            0x16DA304: "ffc300d1fd7b01a9f44f02a9fd430091",
+            0x13D6630: "ff8301d1fd7b02a9f71b00f9f65704a9",
+            0xD2F7D8: "ff0304d1fd7b0fa9fdc30391a20f39a9",
+            # Songlist data loader: AAssetManager_open BL at 0xD2787C, whose
+            # return address is the exact caller 0xD27880.
+            0xD2787C: "31d33494f40300aae00700b4e00314aa",
+            0x126F07C: "ff8303d1fd7b08a9fc6f09a9fa670aa9",
+            0x150560C: "ff8301d1fd7b02a9f85f03a9f65704a9",
+            0x115DE64: "ffc301d1fd7b04a9f65705a9f44f06a9",
+            0x13360A4: "fd7bbda9f65701a9f44f02a9fd030091",
+            0xD2A368: "fd7bbaa9fc6f01a9fa6702a9f85f03a9",
+            0x903168: "ff8303d1fd7b0ba9f6570ca9f44f0da9",
+            0x19E8F54: "fd7bbea9f30b00f9fd030091f30300aa",
+            # Scenecontrol getter keeps the 7.0.0c layout at play context +0x110.
+            0x17B0140: "00404439c0035fd6",
+        },
+        "patches": {
+            0x127DD18: 0x11019148,
+            0x127DDD0: 0x11019148,
+            0x127DE20: 0x11032148,
+            0x13DB3FC: 0x540013A1,
+            0x13DB418: 0x350012C0,
+        },
+    },
 }
 
 

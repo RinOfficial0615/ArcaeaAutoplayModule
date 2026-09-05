@@ -10,7 +10,7 @@ Provides both Zygisk and JNI entry points. You can embed the built .so into an A
 
 - Android NDK r30+ (the build script picks the newest; fails if ≤ r29)
 - Zygisk mode only: device with Zygisk enabled
-- Arcaea 6.12.11c, 6.13.2f, 6.14.0c, 6.16.2c, 6.16.8c, 7.0.0c, or 7.0.1c
+- Arcaea 6.12.11c, 6.13.2f, 6.14.0c, 6.16.2c, 6.16.8c, 7.0.0c, 7.0.1c, or 7.0.255c
 
 ## Build
 
@@ -70,4 +70,4 @@ This project was developed with AI assistance.
 - Project structure: `docs/project-structure.md`
 - Version support: `docs/version-support.md`
 - Modern C++ notes: `docs/cpp/index.md` — toolchain, feature matrix, build pitfalls, usage conventions
-- Offsets reference: `docs/offsets/6.12.11c-offsets.md`, `docs/offsets/6.16.2c-offsets.md`, `docs/offsets/6.16.8c-offsets.md`, `docs/offsets/7.0.0c-offsets.md`, `docs/offsets/7.0.1c-offsets.md`
+- Offsets reference: `docs/offsets/6.12.11c-offsets.md`, `docs/offsets/6.16.2c-offsets.md`, `docs/offsets/6.16.8c-offsets.md`, `docs/offsets/7.0.0c-offsets.md`, `docs/offsets/7.0.1c-offsets.md`, `docs/offsets/7.0.255c-offsets.md`

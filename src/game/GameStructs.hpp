@@ -105,6 +105,9 @@ struct Note<GameVersionId::k7000c> : impl::Note7000cBase {};
 template <>
 struct Note<GameVersionId::k7001c> : impl::Note7000cBase {};
 
+template <>
+struct Note<GameVersionId::k70255c> : impl::Note7000cBase {};
+
 // ---------------------------------------------------------------------------
 //  NotePosition
 // ---------------------------------------------------------------------------
@@ -147,6 +150,9 @@ struct ArcNote<GameVersionId::k7000c> : impl::ArcNote7000cBase {};
 template <>
 struct ArcNote<GameVersionId::k7001c> : impl::ArcNote7000cBase {};
 
+template <>
+struct ArcNote<GameVersionId::k70255c> : impl::ArcNote7000cBase {};
+
 // ---------------------------------------------------------------------------
 //  LogicNote runtime position overlay (arc objects only).  The game writes the
 //  current track-space position per arc into this float pair; taps never touch
@@ -176,6 +182,9 @@ struct NoteRuntimePos<GameVersionId::k7000c> : impl::NoteRuntimePos7000cBase {};
 template <>
 struct NoteRuntimePos<GameVersionId::k7001c> : impl::NoteRuntimePos7000cBase {};
 
+template <>
+struct NoteRuntimePos<GameVersionId::k70255c> : impl::NoteRuntimePos7000cBase {};
+
 // ---------------------------------------------------------------------------
 //  LogicHoldNote (extends LogicNote)
 // ---------------------------------------------------------------------------
@@ -200,6 +209,9 @@ struct HoldNote<GameVersionId::k7000c> : impl::HoldNote7000cBase {};
 
 template <>
 struct HoldNote<GameVersionId::k7001c> : impl::HoldNote7000cBase {};
+
+template <>
+struct HoldNote<GameVersionId::k70255c> : impl::HoldNote7000cBase {};
 
 // ---------------------------------------------------------------------------
 //  TouchLike  (synthetic or hardware touch passed to judgement calls)
@@ -495,6 +507,46 @@ static_assert(offsetof(SongDifficulty<V::k7001c>, lock) == 0xF0);
 static_assert(offsetof(SongDifficulty<V::k7001c>, rating_class) == 0x124);
 static_assert(sizeof(SongDifficulty<V::k7001c>) == 0x128);
 static_assert(offsetof(SongRegistryOwner<V::k7001c>, registry) == 32);
+
+// 7.0.255c keeps the 7.0.0c/7.0.1c object layouts. The paired gameplay,
+// chart-path, play-launcher, and availability bodies retain every consumed
+// displacement (relocated with byte-identical extents; see
+// docs/offsets/7.0.255c-offsets.md).
+static_assert(offsetof(Timer<V::k70255c>, msA) == 32);
+static_assert(offsetof(Timer<V::k70255c>, msB) == 40);
+static_assert(offsetof(Timer<V::k70255c>, flag) == 45);
+static_assert(offsetof(Timer<V::k70255c>, msC) == 52);
+static_assert(offsetof(Gameplay<V::k70255c>, timer) == 48);
+static_assert(offsetof(Gameplay<V::k70255c>, note_begin) == 160);
+static_assert(offsetof(Gameplay<V::k70255c>, note_end) == 168);
+static_assert(offsetof(Note<V::k70255c>, timeStart) == 24);
+static_assert(offsetof(Note<V::k70255c>, timeEnd) == 28);
+static_assert(offsetof(Note<V::k70255c>, pos_ptr) == 32);
+static_assert(offsetof(Note<V::k70255c>, playSceneCtx) == 64);
+static_assert(offsetof(Note<V::k70255c>, active) == 84);
+static_assert(offsetof(Note<V::k70255c>, longTouchState) == 92);
+static_assert(offsetof(NotePosition<V::k70255c>, xNorm) == 20);
+static_assert(offsetof(ArcNote<V::k70255c>, isVoid) == 164);
+static_assert(offsetof(ArcNote<V::k70255c>, activeNow) == 208);
+static_assert(offsetof(NoteRuntimePos<V::k70255c>, runtimeX) == 212);
+static_assert(offsetof(NoteRuntimePos<V::k70255c>, runtimeY) == 216);
+static_assert(offsetof(HoldNote<V::k70255c>, headActivated) == 168);
+static_assert(offsetof(TouchLike<V::k70255c>, sysId) == 12);
+static_assert(offsetof(TouchLike<V::k70255c>, ndcX) == 28);
+static_assert(offsetof(HttpRequest<V::k70255c>, type) == 12);
+static_assert(offsetof(HttpRequest<V::k70255c>, bodyBegin) == 40);
+static_assert(offsetof(HttpRequest<V::k70255c>, bodyEnd) == 48);
+static_assert(offsetof(HttpResponse<V::k70255c>, request) == 16);
+static_assert(offsetof(HttpResponse<V::k70255c>, succeed) == 24);
+static_assert(offsetof(HttpResponse<V::k70255c>, bodyVec) == 32);
+static_assert(offsetof(HttpResponse<V::k70255c>, statusCode) == 80);
+static_assert(offsetof(Song<V::k70255c>, remote_pack) == 0x1C0);
+static_assert(offsetof(Song<V::k70255c>, difficulty_pointers) == 0x228);
+static_assert(offsetof(Song<V::k70255c>, difficulty_presence) == 0x250);
+static_assert(offsetof(SongDifficulty<V::k70255c>, lock) == 0xF0);
+static_assert(offsetof(SongDifficulty<V::k70255c>, rating_class) == 0x124);
+static_assert(sizeof(SongDifficulty<V::k70255c>) == 0x128);
+static_assert(offsetof(SongRegistryOwner<V::k70255c>, registry) == 32);
 
 } // namespace verify
 

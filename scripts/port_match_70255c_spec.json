@@ -1,0 +1,124 @@
+{
+  "_comment": [
+    "Verified 7.0.1c -> 7.0.255c function mapping consumed by the 7.0.255c profile.",
+    "Every new address except show_judgement_effect_at_note was the unique masked-instruction consensus winner; rerun locate to guard against drift and diff to inspect semantic changes.",
+    "show_judgement_effect_at_note was rewritten in 7.0.255c (0x598 -> 0xAC8, new prologue) so its pin is confirmed by exact masked bytes at 0xEED33C; identity is confirmed by identical hit_pure/hit_far/hit_lost + EARLY/LATE strings and by both callers (note_effect_on_miss +0x11C, note_effect_on_judgement +0xB8) matching the 7.0.1c call sites."
+  ],
+  "functions": [
+    {
+      "name": "process_logic_notes",
+      "size": "0x6E0",
+      "old": "0xFFC84C",
+      "new": "0x127D830"
+    },
+    {
+      "name": "try_tap_judgement_for_touch",
+      "size": "0x8E4",
+      "old": "0x15D28B0",
+      "new": "0x14B7010"
+    },
+    {
+      "name": "score_state_apply_judgement",
+      "size": "0x3D8",
+      "old": "0x140CFF4",
+      "new": "0xB4DB58"
+    },
+    {
+      "name": "score_state_apply_miss",
+      "size": "0x1C8",
+      "old": "0x11306E0",
+      "new": "0xE19784"
+    },
+    {
+      "name": "show_judgement_effect_at_note",
+      "size": "0x598",
+      "old": "0xAC4794",
+      "new": "0xEED33C",
+      "expect_bytes": "ff4306d1ef3b0f6ded33106deb2b116d"
+    },
+    {
+      "name": "note_effect_on_miss",
+      "size": "0x180",
+      "old": "0x8372E0",
+      "new": "0x12E3B28"
+    },
+    {
+      "name": "note_effect_on_judgement",
+      "size": "0x118",
+      "old": "0x19AE168",
+      "new": "0x13511A0"
+    },
+    {
+      "name": "logic_color_accepts_touch",
+      "size": "0x180",
+      "old": "0x886444",
+      "new": "0x16DA304"
+    },
+    {
+      "name": "httpclient_process_request",
+      "size": "0x4B8",
+      "old": "0x10FC860",
+      "new": "0x13D6630"
+    },
+    {
+      "name": "curl_easy_setopt_wrapper",
+      "size": "0x80",
+      "old": "0x1A09024",
+      "new": "0xD2F7D8"
+    },
+    {
+      "name": "songlist_parser_body",
+      "size": "0x7A60",
+      "old": "0xC8B1D0",
+      "new": "0x19398D8"
+    },
+    {
+      "name": "asset_bundle_loader",
+      "size": "0x9CC",
+      "old": "0x17BBBD8",
+      "new": "0x13DAFD0"
+    },
+    {
+      "name": "songlist_difficulty_filter",
+      "size": "0x354",
+      "old": "0x18AEFBC",
+      "new": "0x126F07C"
+    },
+    {
+      "name": "difficulty_availability",
+      "size": "0x200",
+      "old": "0x1638058",
+      "new": "0x150560C"
+    },
+    {
+      "name": "song_unlock_mask_check",
+      "size": "0x1AC",
+      "old": "0x11A0070",
+      "new": "0x115DE64"
+    },
+    {
+      "name": "content_availability",
+      "size": "0x64",
+      "old": "0x19A7194",
+      "new": "0x13360A4"
+    },
+    {
+      "name": "play_launcher",
+      "size": "0x288C",
+      "old": "0x18233EC",
+      "new": "0xD2A368"
+    },
+    {
+      "name": "chart_path_builder",
+      "size": "0x3B0",
+      "old": "0x1937B3C",
+      "new": "0x903168"
+    },
+    {
+      "name": "find_song_by_id",
+      "size": "0x3C",
+      "old": "0xE4B5F8",
+      "new": "0x19E8F54"
+    }
+  ]
+}
